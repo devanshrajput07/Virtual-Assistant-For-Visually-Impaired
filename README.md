@@ -1,4 +1,4 @@
-# VAVI — Voice-Controlled AI Assistant for Visually Impaired avigation
+# VAVI — A Voice-Controlled AI Assistant for Visually Impaired Navigation
 
 ---
 
@@ -41,8 +41,8 @@ VAVI provides a robust suite of voice-activated features:
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/yourusername/vavi.git
-   cd vavi
+   git clone https://github.com/devanshrajput07/Virtual-Assistant-For-Visually-Impaired.git
+   cd Virtual-Assistant-For-Visually-Impaired
    ```
 
 2. **Create a Virtual Environment**

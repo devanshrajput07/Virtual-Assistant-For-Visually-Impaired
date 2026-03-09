@@ -1,0 +1,36 @@
+# Python Environment
+.env
+.venv
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Project Specific Data (Privacy & AI Models)
+# Ignore saved faces, alerts, and contacts
+data/faces/
+data/*.json
+# Ignore heavy ML models
+models/*.pt
+models/*.pth
+models/*.onnx
+yolov8n/
+yolov8s/
+yolo*/
+
+# Build and Distribution
+build/
+dist/
+*.egg-info/
+*.egg
+
+# OS Generated
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
