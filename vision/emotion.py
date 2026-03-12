@@ -51,7 +51,7 @@ def detect_emotion(talk):
     )
 
     prompt = (
-        f"You are VAVI, a caring voice assistant. Based on this camera analysis of a user's face: "
+        f"You are AURA, a caring voice assistant. Based on this camera analysis of a user's face: "
         f"{face_description}. "
         f"Make a warm, empathetic comment about how they might be feeling. "
         f"Be positive and supportive. If brightness is high, they might be in a well-lit happy environment. "
@@ -62,7 +62,7 @@ def detect_emotion(talk):
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are VAVI, a warm and empathetic voice assistant."},
+                {"role": "system", "content": "You are AURA, a warm and empathetic voice assistant."},
                 {"role": "user", "content": prompt},
             ],
         )

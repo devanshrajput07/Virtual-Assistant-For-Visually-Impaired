@@ -1,23 +1,43 @@
 import speech_recognition as sr
 import pyttsx3
 import threading
-import os
 import datetime
-from config.settings import GROQ_KEY
-from groq import Groq
+import time
+from collections import deque
 
 _tts_lock = threading.Lock()
 listener = sr.Recognizer()
+_talk_handler = None
+_web_message_queue = deque()
+_queue_lock = threading.Lock()
 
-client = Groq(api_key=GROQ_KEY)
+def set_talk_handler(handler):
+    global _talk_handler
+    _talk_handler = handler
+
+def get_web_updates():
+    """Retrieve and clear all pending messages for the web UI"""
+    global _web_message_queue
+    with _queue_lock:
+        updates = list(_web_message_queue)
+        _web_message_queue.clear()
+        return updates
 
 def talk(text):
-    """Speak text aloud using a thread-safe singleton engine"""
-    print(f"[VAVI] {text}")
+    """Speak text aloud using a thread-safe singleton engine, or route to web UI"""
+    # Always push to the web queue if a web interaction is happening
+    global _web_message_queue
+    with _queue_lock:
+        _web_message_queue.append(text)
+
+    if _talk_handler:
+        _talk_handler(text)
+        return
+        
     with _tts_lock:
         try:
             engine = pyttsx3.init(driverName='sapi5')
-            engine.setProperty('rate', 170)
+            engine.setProperty('rate', 140)
             voices = engine.getProperty('voices')
             if voices:
                 engine.setProperty('voice', voices[0].id)
@@ -28,42 +48,31 @@ def talk(text):
             print(f"TTS Error: {e}")
 
 def accept_command_text():
-    """Wrapper that returns only the text from accept_command"""
-    cmd, _ = accept_command()
-    return cmd
+    """Wrapper that returns only the text from accept_command.
+    Adds a slight delay so the browser TTS has time to speak the follow-up question
+    before the microphone starts listening, preventing TTS echo loops."""
+    # Only delay if we're in a web context
+    if _talk_handler is not None:
+        time.sleep(2.5)
+    return accept_command()
 
 def accept_command():
-    """Listen via microphone, save to temp file, and transcribe via Groq Whisper"""
+    """Listen via microphone and transcribe via Google Speech Recognition"""
     try:
         with sr.Microphone() as source:
-            print("Listening (Auto-detecting language)...")
-            listener.adjust_for_ambient_noise(source, duration=0.5)
-            voice_audio = listener.listen(source, timeout=8, phrase_time_limit=12)
-            
-            temp_filename = "temp_voice_cmd.wav"
-            with open(temp_filename, "wb") as f:
-                f.write(voice_audio.get_wav_data())
-            
-            with open(temp_filename, "rb") as file:
-                transcription = client.audio.transcriptions.create(
-                    file=(temp_filename, file.read()),
-                    model="whisper-large-v3",
-                    response_format="verbose_json",
-                )
-            
-            if os.path.exists(temp_filename):
-                try: os.remove(temp_filename)
-                except: pass
-                
-            command = transcription.text.strip().lower()
-            detected_lang = transcription.language
-            
+            print("🎙️ Listening...")
+            listener.adjust_for_ambient_noise(source, duration=0.1)
+            voice = listener.listen(source, timeout=8, phrase_time_limit=10)
+            command = listener.recognize_google(voice)
             if command:
-                print(f"You said ({detected_lang}): {command}")
-                return command, detected_lang
-    except Exception as e:
-        print(f"Recognition Error: {e}")
-    return None, None
+                command = command.lower()
+                print(f"🧏 You said: {command}")
+                return command
+    except sr.UnknownValueError:
+        pass
+    except sr.RequestError:
+        pass
+    return None
 
 def greeting_message():
     """Speak a time-appropriate greeting"""
@@ -74,4 +83,4 @@ def greeting_message():
         talk("Good Afternoon!")
     else:
         talk("Good Evening!")
-    talk("I am VAVI, your voice assistant. How can I help you today?")
+    talk("I am AURA, your voice assistant. How can I help you today?")

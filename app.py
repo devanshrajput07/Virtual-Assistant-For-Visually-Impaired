@@ -1,13 +1,13 @@
+import threading
+import sys
 from flask import Flask, render_template, jsonify, request
 import main
 from core.voice import get_web_updates
-import threading
 
 app = Flask(__name__)
 
 # Global lock to prevent multiple requests from fighting for the microphone
-vavi_lock = threading.Lock()
-vavi_busy = False # We still keep this for quick status checks
+aura_lock = threading.Lock()
 
 @app.route('/')
 def index():
@@ -21,14 +21,11 @@ def updates():
 
 @app.route('/listen', methods=['POST'])
 def listen():
-    global vavi_busy
-    
     # Wait up to 5 seconds to acquire the lock instead of instantly failing
-    acquired = vavi_lock.acquire(timeout=5.0)
+    acquired = aura_lock.acquire(timeout=5.0)
     if not acquired:
-        return jsonify({"status": "error", "message": "VAVI is busy processing a previous command. Please wait."}), 400
+        return jsonify({"status": "error", "message": "AURA is busy processing a previous command. Please wait."}), 400
     
-    vavi_busy = True
     try:
         result = main.handle_single_command()
         return jsonify({
@@ -40,27 +37,19 @@ def listen():
     except Exception:
         return jsonify({"status": "error", "message": "Something went wrong processing your request."}), 500
     finally:
-        vavi_busy = False
-        vavi_lock.release()
+        aura_lock.release()
 
 @app.route('/reset', methods=['POST'])
 def reset():
-    """Manually clear the lock and busy state if it gets stuck"""
-    global vavi_busy
+    """Manually clear the lock state if it gets stuck"""
     try:
-        # Check if held and release
-        if vavi_lock.locked():
-            vavi_lock.release()
-        vavi_busy = False
+        if aura_lock.locked():
+            aura_lock.release()
         return jsonify({"status": "success", "message": "Assistant state has been reset."})
-    except Exception as e:
-        # If release errors (e.g. not owned by thread), just proceed
-        vavi_busy = False
+    except Exception:
         return jsonify({"status": "success", "message": "Attempted to reset state."})
 
 if __name__ == '__main__':
-    import sys
-
     port = 5000
     use_ngrok = '--public' in sys.argv
 
@@ -69,7 +58,7 @@ if __name__ == '__main__':
             from pyngrok import ngrok
             public_url = ngrok.connect(port)
             print(f"\n{'='*50}")
-            print(f"  VAVI is live! Share this URL:")
+            print(f"  AURA is live! Share this URL:")
             print(f"  {public_url}")
             print(f"{'='*50}\n")
         except ImportError:

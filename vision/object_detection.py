@@ -1,8 +1,3 @@
-"""
-object_detection.py
-Enhanced version — Stable, Accurate, and Always Speaks Out Results
-"""
-
 from ultralytics import YOLO
 import cv2
 import numpy as np

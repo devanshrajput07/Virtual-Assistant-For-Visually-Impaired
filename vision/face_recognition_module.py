@@ -35,6 +35,7 @@ def compute_face_histogram(face_img):
     return hist.flatten().tolist()
 
 def register_face(talk, name):
+    ensure_dirs()
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         talk("Camera not detected.")
@@ -44,12 +45,12 @@ def register_face(talk, name):
     best_face = None
     best_area = 0
 
-    for _ in range(20):
+    for _ in range(30):
         ret, frame = cap.read()
         if not ret:
             continue
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(80, 80))
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(40, 40))
 
         for (x, y, w, h) in faces:
             area = w * h
@@ -66,7 +67,10 @@ def register_face(talk, name):
     histogram = compute_face_histogram(best_face)
 
     face_path = os.path.join(FACES_DIR, f"{name.lower().replace(' ', '_')}.jpg")
-    cv2.imwrite(face_path, best_face)
+    success = cv2.imwrite(face_path, best_face)
+    if not success:
+        talk("Internal error: Could not save face image. Please check folder permissions.")
+        return
 
     db = load_face_db()
     db[name.lower()] = {

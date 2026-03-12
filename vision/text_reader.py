@@ -1,10 +1,3 @@
-"""
-text_reader.py (Enhanced)
--------------------------
-Improved OCR reader that captures text from the webcam and
-applies advanced preprocessing for higher accuracy.
-"""
-
 import cv2
 import pytesseract
 from PIL import Image

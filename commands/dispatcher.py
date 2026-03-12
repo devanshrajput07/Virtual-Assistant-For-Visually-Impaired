@@ -96,7 +96,7 @@ def process_command(command):
 
     elif ("remember" in command and "face" in command) or ("save" in command and "face" in command):
         name = command
-        for kw in ["hey vavi", "vavi", "remember this face as", "remember face as", "save this face as", "save face as", "remember", "face", "this", "as", "save"]:
+        for kw in ["hey aura", "aura", "remember this face as", "remember face as", "save this face as", "save face as", "remember", "face", "this", "as", "save"]:
             name = name.replace(kw, "")
         name = name.strip().title()
         if not name:

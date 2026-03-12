@@ -119,7 +119,7 @@ def command_emergency_sos():
         location = "Unknown location"
         maps_link = ""
     
-    message = f"🚨 EMERGENCY SOS from VAVI Assistant! I need help. My approximate location: {location}. {maps_link}"
+    message = f"🚨 EMERGENCY SOS from AURA Assistant! I need help. My approximate location: {location}. {maps_link}"
     number = emergency_contact.replace("+", "")
     encoded = urllib.parse.quote(message)
     
@@ -134,14 +134,14 @@ def command_export_conversation():
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    filepath = os.path.join(desktop, f"vavi_chat_{timestamp}.txt")
+    filepath = os.path.join(desktop, f"aura_chat_{timestamp}.txt")
     
     try:
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(f"VAVI Conversation Log - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"AURA Conversation Log - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
             f.write("=" * 50 + "\n\n")
             for msg in conversation_history:
-                role = "You" if msg["role"] == "user" else "VAVI"
+                role = "You" if msg["role"] == "user" else "AURA"
                 f.write(f"{role}: {msg['content']}\n\n")
         talk(f"Conversation saved to your Desktop.")
     except Exception as e:

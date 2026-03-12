@@ -1,16 +1,16 @@
-# VAVI — A Voice-Controlled AI Assistant for Visually Impaired Navigation
+# AURA — A Voice-Controlled AI Assistant for Visually Impaired Navigation
 
 ---
 
-**VAVI** is an advanced, fully voice-operated personal assistant designed to bridge the gap between complex digital interactions and voice-first accessibility. By integrating computer vision, natural language processing, and an intuitive web interface, VAVI acts as both a digital companion and a navigational aid.
+**AURA** (Visual Assistant for Visually Impaired) is an advanced, fully voice-operated personal assistant designed to bridge the gap between complex digital interactions and voice-first accessibility. By integrating computer vision, natural language processing, and an intuitive web interface, VAVI acts as both a digital companion and a navigational aid.
 
-With over **50+ intelligent commands**, VAVI can browse the web, send WhatsApp messages, recognize objects and faces, detect emotions, read text from documents, and even act as a navigational guide—all entirely hands-free.
+With over **50+ intelligent commands**, AURA can browse the web, send WhatsApp messages, recognize objects and faces, detect emotions, read text from documents, and even act as a navigational guide—all entirely hands-free.
 
 ---
 
 ## ✨ Features
 
-VAVI provides a robust suite of voice-activated features:
+AURA provides a robust suite of voice-activated features:
 
 ### 👁️‍🗨️ Vision & Accessibility
 - **Scene Description & Navigation:** *"Describe my surroundings"* or *"Guide me"* — Real-time obstacle warnings and scene analysis using YOLOv8.
@@ -19,10 +19,10 @@ VAVI provides a robust suite of voice-activated features:
 - **Document Reader Mode:** *"Read document"* — Continuous OCR reading with voice controls (*"next page"*, *"repeat"*).
 - **Object Detection & Depth:** *"Find my keys"* / *"How far is the chair?"* — Locates objects and estimates proximity.
 
-### 🧠 Intelligent Conversational AI
-- **Context-Aware Chat:** Powered by the fast **Groq API** (Llama 3). Ask *"Tell me more"* or *"Remind me about that"* and VAVI understands the context.
-- **Multi-Language Support:** Speak in Hindi, Bengali, Tamil, etc., and VAVI translates your intent dynamically.
-- **Hands-Free Wake Word:** Just say **"Hey VAVI"** to wake the assistant in the Web UI.
+### 🧠 Conversational AI
+- **Context-Aware:** Powered by **Groq Llama 3**, AURA remembers previous turns in a conversation.
+- **Deep Help System:** Interactive voice guide categories all 50+ commands.
+- **Multi-Lingual:** Direct translation and definition support for global accessibility.
 
 ### 🚀 Productivity & Lifestyle
 - **Mood-Based Music:** *"Play something relaxing"* or *"I need workout music"* — Automatically curates YouTube playlists.
@@ -72,12 +72,11 @@ VAVI provides a robust suite of voice-activated features:
 ## 🚀 Usage
 
 **Run the Web UI Mode (Recommended)**
-This launches a beautiful, accessible web interface with the "Hey VAVI" wake word support.
+This launches a beautiful, accessible web interface with the "Hey AURA" wake word support.
 
 ```bash
 python app.py
 ```
 
 ---
-
 *Built with ❤️ to make the physical and digital world more accessible.*

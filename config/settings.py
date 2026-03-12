@@ -23,6 +23,7 @@ APP_MAP = {
     "excel": "excel.exe",
     "powerpoint": "powerpnt.exe",
     "snipping tool": "snippingtool.exe",
+    "camera": "microsoft.windows.camera:",
 }
 
 WEBSITE_MAP = {
@@ -52,9 +53,9 @@ WEBSITE_MAP = {
 
 SMALL_TALK = {
     "how are you": "I'm doing great, thank you for asking! How can I help you?",
-    "what is your name": "I am VAVI, your voice assistant for visually impaired navigation.",
-    "who made you": "I was created as a final year project to help visually impaired people navigate the world.",
-    "who created you": "I was created as a final year project to help visually impaired people navigate the world.",
+    "what is your name": "I am AURA, your voice assistant for visually impaired navigation.",
+    "who made you": "I was created by Devansh Rajput to help visually impaired people navigate the world.",
+    "who created you": "I was created by Devansh Rajput to help visually impaired people navigate the world.",
     "thank you": "You're welcome! Glad I could help.",
     "thanks": "You're welcome! Let me know if you need anything else.",
     "good morning": "Good morning! Hope you have a wonderful day ahead.",

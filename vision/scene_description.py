@@ -1,11 +1,3 @@
-"""
-scene_description.py
---------------------
-Analyzes the scene through the webcam using YOLO object detection,
-then uses Groq (LLaMA-3) to generate a natural language summary
-for visually impaired users.
-"""
-
 import cv2
 from ultralytics import YOLO
 from groq import Groq
