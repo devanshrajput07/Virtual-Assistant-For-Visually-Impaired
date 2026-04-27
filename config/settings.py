@@ -1,16 +1,43 @@
+"""
+settings.py
+Central configuration for AURA. Loads from .env file.
+"""
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# API Keys
+logger = logging.getLogger("aura.config")
+
+#  API Keys 
 GROQ_KEY = os.getenv("GROQ_API_KEY")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+DB_NAME = os.getenv("DB_NAME", "aura_db")
+
+# Log level (DEBUG / INFO / WARNING)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 if not GROQ_KEY:
-    raise EnvironmentError("GROQ_API_KEY missing in .env file!")
+    raise EnvironmentError(
+        "GROQ_API_KEY is missing from your .env file! "
+        "Get a free key at https://console.groq.com"
+    )
 
-# Maps & Dictionaries
+if not NEWS_API_KEY:
+    logger.warning(
+        "NEWS_API_KEY is not set — news and briefing commands will be unavailable. "
+        "Get a free key at https://newsapi.org"
+    )
+
+if not MONGODB_URI:
+    logger.warning(
+        "MONGODB_URI is not set — the app will use in-memory dicts as fallback. "
+        "Set MONGODB_URI=<your Atlas connection string> in .env for persistence."
+    )
+
+#  App & Website Maps 
 APP_MAP = {
     "notepad": "notepad.exe",
     "calculator": "calc.exe",

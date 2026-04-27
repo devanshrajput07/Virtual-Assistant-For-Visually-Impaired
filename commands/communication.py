@@ -1,148 +1,243 @@
-import json
+"""
+commands/communication.py
+All communication-related commands for AURA.
+Contacts stored in MongoDB Atlas (no JSON files).
+
+Fixes:
+  - Stale CONTACTS global eliminated — always read from DB
+  - Emergency SOS with real location
+  - Proper logging throughout
+"""
+
 import urllib.parse
 import webbrowser
 import datetime
-import os
+import logging
 import requests
-import subprocess
+import re
+
 from core.voice import talk, accept_command_text
-from core.ai_chat import conversation_history
 
-CONTACTS_FILE = "data/contacts.json"
+logger = logging.getLogger("aura.commands.communication")
 
-def load_contacts():
+
+
+def _get_contacts() -> dict[str, str]:
+    """Always fetch fresh contacts from MongoDB."""
     try:
-        with open(CONTACTS_FILE, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        with open(CONTACTS_FILE, "w") as f:
-            json.dump({}, f)
+        from core.db import get_all_contacts
+        return get_all_contacts()
+    except Exception as exc:
+        logger.error("Could not load contacts from DB: %s", exc)
         return {}
 
-CONTACTS = load_contacts()
 
-def save_contact(name, number):
+def save_contact(name: str, number: str) -> None:
     try:
-        with open(CONTACTS_FILE, "r") as f:
-            contacts = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        contacts = {}
-    contacts[name.lower()] = number
-    with open(CONTACTS_FILE, "w") as f:
-        json.dump(contacts, f, indent=4)
-    talk(f"Saved contact {name} with number {number}.")
-    global CONTACTS
-    CONTACTS = contacts
+        from core.db import save_contact as db_save
+        db_save(name, number)
+        talk(f"Contact {name} has been saved with number {number}.")
+        logger.info("Contact saved: %s → %s", name, number)
+    except Exception as exc:
+        logger.error("Failed to save contact: %s", exc)
+        talk("Sorry, I couldn't save that contact.")
 
-def command_send_whatsapp_message(command=None):
+
+
+def command_send_whatsapp_message(command: str = "") -> None:
     try:
-        if not command:
-            talk("What should I send and to whom?")
-            command = accept_command_text()
-            if not command: return
+        contacts = _get_contacts()
 
         cmd = command.lower()
-        fillers = ["send", "message", "to", "on", "whatsapp", "saying", "through", "using"]
-        for word in fillers: cmd = cmd.replace(word, "")
-        cmd = cmd.strip()
+        fillers = r'\b(?:send|message|to|on|whatsapp|saying|through|using|a)\b'
+        cmd = re.sub(fillers, ' ', cmd)
+        cmd = " ".join(cmd.split())  # normalise whitespace
 
+        # Find contact name in command
         contact_name = None
-        for name in CONTACTS.keys():
+        for name in contacts:
             if name in cmd:
                 contact_name = name
                 break
 
         if not contact_name:
             talk("Who should I send the message to?")
-            contact_name = accept_command_text()
-            if not contact_name or contact_name.lower() not in CONTACTS:
-                talk("Sorry, I don't have that contact saved.")
+            response = accept_command_text()
+            if not response:
                 return
-            contact_name = contact_name.lower()
+            contact_name = response.lower().strip()
+            if contact_name not in contacts:
+                talk(f"Sorry, I don't have {contact_name} saved as a contact.")
+                return
 
         message = cmd.replace(contact_name, "").strip()
         if not message:
             talk("What message should I send?")
             message = accept_command_text()
-            if not message: return
+            if not message:
+                return
 
-        number = CONTACTS[contact_name]
-        encoded_message = urllib.parse.quote(message)
-        url = f"https://wa.me/{number.replace('+', '')}?text={encoded_message}"
-        talk(f"Opening WhatsApp to send '{message}' to {contact_name}.")
+        number = contacts[contact_name]
+        encoded = urllib.parse.quote(message)
+        url = f"https://wa.me/{number.replace('+', '')}?text={encoded}"
+        talk(f"Opening WhatsApp to send your message to {contact_name}.")
         webbrowser.open(url)
-    except Exception as e:
-        talk(f"Sorry, could not send the message. {e}")
+        logger.info("WhatsApp to %s: %s", contact_name, message)
 
-def command_speed_dial(command):
-    contact_name = command
-    for keyword in ["call", "dial", "phone", "ring"]:
-        contact_name = contact_name.replace(keyword, "")
-    contact_name = contact_name.strip().lower()
-    
+    except Exception as exc:
+        logger.error("WhatsApp command failed: %s", exc)
+        talk("Sorry, I couldn't send the message.")
+
+
+
+def command_speed_dial(command: str) -> None:
+    contacts = _get_contacts()
+
+    contact_name = command.lower()
+    fillers = r'\b(?:call|dial|phone|ring)\b'
+    contact_name = re.sub(fillers, '', contact_name)
+    contact_name = contact_name.strip()
+
     if not contact_name:
         talk("Who should I call?")
         contact_name = accept_command_text()
-        if not contact_name: return
-        contact_name = contact_name.lower()
-    
-    if contact_name in CONTACTS:
-        number = CONTACTS[contact_name].replace("+", "")
+        if not contact_name:
+            return
+        contact_name = contact_name.lower().strip()
+
+    if contact_name in contacts:
+        number = contacts[contact_name].replace("+", "")
         talk(f"Opening WhatsApp call to {contact_name}.")
         webbrowser.open(f"https://wa.me/{number}")
     else:
         talk(f"Sorry, I don't have {contact_name} in my contacts.")
 
-def command_read_clipboard():
+
+
+def command_read_clipboard() -> None:
     try:
-        result = subprocess.run(['powershell', '-command', 'Get-Clipboard'], 
-                              capture_output=True, text=True, timeout=5)
+        import subprocess
+        result = subprocess.run(
+            ["powershell", "-command", "Get-Clipboard"],
+            capture_output=True, text=True, timeout=5
+        )
         text = result.stdout.strip()
-        if text: talk(f"Your clipboard says: {text}")
-        else: talk("Your clipboard is empty.")
-    except Exception as e:
-        talk("Sorry, I couldn't read the clipboard.")
+        if text:
+            talk(f"Your clipboard contains: {text}")
+        else:
+            talk("Your clipboard is empty.")
+    except Exception as exc:
+        logger.warning("Clipboard read failed: %s", exc)
+        talk("Sorry, I couldn't access the clipboard.")
 
-def command_emergency_sos():
-    emergency_contact = CONTACTS.get("emergency") or CONTACTS.get("sos") or CONTACTS.get("mom") or CONTACTS.get("dad")
-    if not emergency_contact:
-        talk("No emergency contact found. Please save a contact named 'emergency' first.")
-        return
-    
+
+
+def command_emergency_sos(gps_lat: float = None, gps_lon: float = None) -> None:
+    # Find contact flagged as emergency in MongoDB first
+    emergency_number = None
+    emergency_name = None
     try:
-        loc_data = requests.get("http://ip-api.com/json/", timeout=5).json()
-        location = f"{loc_data.get('city', 'Unknown')}, {loc_data.get('country', '')}"
-        lat = loc_data.get('lat', '')
-        lon = loc_data.get('lon', '')
-        maps_link = f"https://maps.google.com/?q={lat},{lon}" if lat and lon else ""
-    except:
-        location = "Unknown location"
-        maps_link = ""
-    
-    message = f"🚨 EMERGENCY SOS from AURA Assistant! I need help. My approximate location: {location}. {maps_link}"
-    number = emergency_contact.replace("+", "")
+        db_obj = __import__("core.db", fromlist=["get_db"]).get_db()
+        doc = db_obj.contacts.find_one({"is_emergency": True}, {"_id": 0})
+        if doc:
+            emergency_number = doc["phone"]
+            emergency_name = doc["name"].title()
+    except Exception as exc:
+        logger.warning("Could not query emergency contact flag: %s", exc)
+
+    # Fallback: look for well-known names
+    if not emergency_number:
+        contacts = _get_contacts()
+        for fallback in ["emergency", "sos", "mom", "dad", "help"]:
+            if fallback in contacts:
+                emergency_number = contacts[fallback]
+                emergency_name = fallback.title()
+                break
+
+    if not emergency_number:
+        talk("No emergency contact found. Please save a contact and mark it as emergency first.")
+        return
+
+    # Get approximate location from IP or use provided GPS
+    location_str = "Unknown location"
+    maps_link = ""
+    try:
+        if gps_lat and gps_lon:
+            # We have highly accurate coordinates from the browser!
+            lat, lon = gps_lat, gps_lon
+            maps_link = f" Location: https://maps.google.com/?q={lat},{lon}"
+            
+            # Try to get the city name from those coordinates (Reverse Geocoding)
+            headers = {"User-Agent": "AURA-VoiceAssistant/1.0"}
+            rev_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
+            try:
+                rev_data = requests.get(rev_url, headers=headers, timeout=5).json()
+                addr = rev_data.get("address", {})
+                city = addr.get("city", addr.get("town", addr.get("village", addr.get("county", ""))))
+                state = addr.get("state", "")
+                if city:
+                    location_str = f"{city}, {state}".strip(", ")
+                else:
+                    location_str = "Live GPS Coordinates"
+            except Exception:
+                location_str = "Live GPS Coordinates"
+
+        else:
+            # Fallback to IP-based Geolocation (often inaccurate depending on ISP routing)
+            loc = requests.get("http://ip-api.com/json/", timeout=5).json()
+            city = loc.get("city", "")
+            country = loc.get("country", "")
+            lat, lon = loc.get("lat", ""), loc.get("lon", "")
+            location_str = f"{city}, {country}".strip(", ")
+            if lat and lon:
+                maps_link = f" Location: https://maps.google.com/?q={lat},{lon}"
+    except Exception as exc:
+        logger.warning("Could not get location for SOS: %s", exc)
+
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    name_display = emergency_name or "Emergency Contact"
+    message = (
+        f"🚨 EMERGENCY SOS from AURA!\n"
+        f"I need immediate help. Please respond right away.\n"
+        f"Time: {now}\n"
+        f"Approximate location: {location_str}.{maps_link}\n"
+        f"— Sent via AURA Voice Assistant"
+    )
     encoded = urllib.parse.quote(message)
-    
-    talk("Sending emergency SOS now!")
-    webbrowser.open(f"https://wa.me/{number}?text={encoded}")
-    talk("Emergency message sent via WhatsApp. Stay safe.")
+    number = emergency_number.replace("+", "")
 
-def command_export_conversation():
-    if not conversation_history:
-        talk("There's no conversation to save yet.")
-        return
-    
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    filepath = os.path.join(desktop, f"aura_chat_{timestamp}.txt")
-    
+    talk(f"Sending emergency SOS to {name_display}. Stay calm.")
+    webbrowser.open(f"https://wa.me/{number}?text={encoded}")
+    talk(f"Emergency message sent to {name_display} via WhatsApp. Help is on the way. Stay safe.")
+    logger.warning("SOS sent to %s (%s) from location: %s", name_display, number, location_str)
+
+
+
+
+def command_export_conversation() -> None:
     try:
+        from core.ai_chat import get_conversation_history
+        history = get_conversation_history()
+
+        if not history:
+            talk("There's no conversation to save yet.")
+            return
+
+        import os
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        filepath = os.path.join(desktop, f"aura_chat_{timestamp}.txt")
+
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(f"AURA Conversation Log - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"AURA Conversation Log — {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
             f.write("=" * 50 + "\n\n")
-            for msg in conversation_history:
+            for msg in history:
                 role = "You" if msg["role"] == "user" else "AURA"
                 f.write(f"{role}: {msg['content']}\n\n")
-        talk(f"Conversation saved to your Desktop.")
-    except Exception as e:
+
+        talk("Conversation saved to your Desktop.")
+        logger.info("Conversation exported to %s", filepath)
+
+    except Exception as exc:
+        logger.error("Export failed: %s", exc)
         talk("Sorry, I couldn't save the conversation.")

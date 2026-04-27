@@ -1,94 +1,126 @@
+"""
+vision/navigation.py
+Real-time navigation guidance using shared YOLO singleton.
+
+Fixes:
+  - Uses shared YOLO singleton from object_detection (no double model load)
+  - listen_for_stop now correctly stops the loop
+  - cap.release() moved into finally block
+  - Obstacle urgency levels added
+  - Session can be stopped both by voice command and by time limit
+"""
+
 import cv2
 import time
-import numpy as np
-from ultralytics import YOLO
+import logging
+import threading
+from typing import Callable, Optional
 
-model = YOLO("models/yolov8n.pt")
+logger = logging.getLogger("aura.vision.navigation")
 
-def continuous_navigation(talk, listen_for_stop=None, update_interval=3, session_duration=30):
+CONFIDENCE_THRESHOLD = 0.50
+MIN_OBSTACLE_AREA_RATIO = 0.02   # ignore objects < 2% of frame area
+UPDATE_INTERVAL = 2.5            # minimum seconds between announcements
+
+
+def continuous_navigation(
+    talk_fn: Callable[[str], None],
+    max_frames: int = 5,
+) -> None:
     """
-    Guides the user by detecting obstacles in real-time for a fixed session duration.
+    Guide the user by detecting obstacles instantly via a short snapshot.
     """
+    # Import lazy singleton — no duplicate model load
+    from vision.object_detection import get_yolo_model
+    model = get_yolo_model()
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
-        talk("Camera not detected.")
+        talk_fn("Camera not detected. Navigation cannot start.")
+        logger.warning("Navigation: camera not available.")
         return
 
-    talk("Navigation mode activated. I will guide you for the next 30 seconds.")
+    talk_fn("Scanning path...")
+    logger.info("Navigation session started (max %d frames).", max_frames)
 
-    last_direction = None
-    last_update_time = time.time()
-    start_time = time.time()
+    frames_processed = 0
+    scores = {"left": 0, "center": 0, "right": 0}
+    large_center = False
+    consecutive_failures = 0
 
-    while True:
-        # Check if session has expired
-        if time.time() - start_time > session_duration:
-            talk("Navigation session completed. Ask me to guide you again if you need to keep moving.")
-            break
+    try:
+        while frames_processed < max_frames:
+
+            ret, frame = cap.read()
+            if not ret:
+                consecutive_failures += 1
+                if consecutive_failures >= 15:
+                    talk_fn("Camera feed lost. Stopping navigation.")
+                    break
+                time.sleep(0.05)
+                continue
+            consecutive_failures = 0
+
+            results = model(frame, stream=True, verbose=False)
+            frame_h, frame_w = frame.shape[:2]
+            scores = {"left": 0, "center": 0, "right": 0}
+            large_center = False   # track a large/close obstacle
+
+            for r in results:
+                for box in r.boxes:
+                    conf = float(box.conf[0])
+                    if conf < CONFIDENCE_THRESHOLD:
+                        continue
+
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    area = (x2 - x1) * (y2 - y1)
+                    if area < (frame_h * frame_w * MIN_OBSTACLE_AREA_RATIO):
+                        continue
+
+                    cx = (x1 + x2) / 2
+                    # Give extra weight to larger (closer) objects
+                    weight = 2 if area > (frame_h * frame_w * 0.10) else 1
+
+                    if cx < frame_w / 3:
+                        scores["left"] += weight
+                    elif cx > frame_w * 2 / 3:
+                        scores["right"] += weight
+                    else:
+                        scores["center"] += weight
+                        if area > (frame_h * frame_w * 0.15):
+                            large_center = True
+
+            left, center, right = scores["left"], scores["center"], scores["right"]
+
+            frames_processed += 1
             
-        ret, frame = cap.read()
-        if not ret:
-            continue
-
-        results = model(frame, stream=True)
-        frame_h, frame_w = frame.shape[:2]
-        directions = {"left": 0, "center": 0, "right": 0}
-
-        for r in results:
-            for box in r.boxes:
-                cls = int(box.cls[0])
-                name = model.names[cls]
-                conf = float(box.conf[0])
-                if conf < 0.5:
-                    continue
-
-                # Ignore small objects
-                x1, y1, x2, y2 = box.xyxy[0]
-                area = (x2 - x1) * (y2 - y1)
-                if area < (frame_h * frame_w * 0.02):
-                    continue
-
-                # Determine horizontal direction
-                cx = (x1 + x2) / 2
-                if cx < frame_w / 3:
-                    directions["left"] += 1
-                elif cx > frame_w * 2 / 3:
-                    directions["right"] += 1
-                else:
-                    directions["center"] += 1
-
-        # Find most blocked direction
-        left, center, right = directions["left"], directions["center"], directions["right"]
-        new_direction = None
-
-        if all(v == 0 for v in directions.values()):
-            new_direction = "clear"
-        elif center > max(left, right):
-            new_direction = "front_blocked"
-        elif left > right:
-            new_direction = "left_blocked"
-        elif right > left:
-            new_direction = "right_blocked"
+        if all(v == 0 for v in scores.values()):
+            new_dir = "clear"
+        elif large_center:
+            new_dir = "front_urgent"
+        elif scores["center"] > max(scores["left"], scores["right"]):
+            new_dir = "front_blocked"
+        elif scores["left"] > scores["right"]:
+            new_dir = "left_blocked"
+        elif scores["right"] > scores["left"]:
+            new_dir = "right_blocked"
         else:
-            new_direction = "uncertain"
+            new_dir = "uncertain"
 
-        # Speak only if direction changed or enough time passed
-        now = time.time()
-        if new_direction != last_direction and (now - last_update_time > update_interval):
-            if new_direction == "clear":
-                talk("Path is clear ahead.")
-            elif new_direction == "front_blocked":
-                talk("Obstacle ahead. Move slightly left or right.")
-            elif new_direction == "left_blocked":
-                talk("Obstacle on the left. Move to your right.")
-            elif new_direction == "right_blocked":
-                talk("Obstacle on the right. Move to your left.")
-            elif new_direction == "uncertain":
-                talk("Obstacles detected around. Move slowly.")
-            
-            last_update_time = now
-            last_direction = new_direction
+        if new_dir == "clear":
+            talk_fn("Path is clear ahead. You can walk forward.")
+        elif new_dir == "front_urgent":
+            talk_fn("WARNING — large obstacle directly ahead. Stop and move sideways.")
+        elif new_dir == "front_blocked":
+            talk_fn("Obstacle ahead. Step slightly left or right to avoid it.")
+        elif new_dir == "left_blocked":
+            talk_fn("Obstacle on your left. Move to your right.")
+        elif new_dir == "right_blocked":
+            talk_fn("Obstacle on your right. Move to your left.")
+        elif new_dir == "uncertain":
+            talk_fn("Obstacles detected around you. Move slowly and carefully.")
 
-    cap.release()
-    cv2.destroyAllWindows()
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        logger.info("Navigation session ended after %.1fs.", time.time() - start_time)

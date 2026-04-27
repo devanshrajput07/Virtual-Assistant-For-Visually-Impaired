@@ -8,10 +8,8 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Project Specific Data (Privacy & AI Models)
-# Ignore saved faces, alerts, and contacts
-data/faces/
-data/*.json
+# Ignore server logs
+logs/
 # Ignore heavy ML models
 models/*.pt
 models/*.pth

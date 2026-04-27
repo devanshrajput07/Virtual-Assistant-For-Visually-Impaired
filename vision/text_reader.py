@@ -34,7 +34,7 @@ def preprocess_image(frame):
 
 def read_text_from_camera(talk):
     """Capture one frame, process it, and extract readable text."""
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk("Camera not detected.")
         return

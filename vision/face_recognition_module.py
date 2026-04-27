@@ -36,7 +36,7 @@ def compute_face_histogram(face_img):
 
 def register_face(talk, name):
     ensure_dirs()
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk("Camera not detected.")
         return
@@ -87,7 +87,7 @@ def recognize_face(talk):
         talk("I don't have any faces saved yet. Say 'remember this face as' followed by a name to register someone.")
         return
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk("Camera not detected.")
         return

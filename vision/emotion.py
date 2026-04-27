@@ -10,7 +10,7 @@ HAAR_CASCADE = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 face_cascade = cv2.CascadeClassifier(HAAR_CASCADE)
 
 def detect_emotion(talk):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk("Camera not detected.")
         return

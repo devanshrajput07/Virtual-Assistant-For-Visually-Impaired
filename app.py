@@ -1,68 +1,308 @@
-import threading
+"""
+app.py
+AURA Flask Application — Production-Ready
+
+Improvements:
+  - Logging initialised at startup
+  - Security headers via flask-talisman (CSP, HSTS)
+  - Rate limiting via flask-limiter
+  - Fixed reset() lock handling
+  - New endpoints: /status, /history, /contacts (GET/POST/DELETE)
+  - debug=False in production (use --debug flag explicitly)
+  - Proactive monitor started on first request
+"""
+
 import sys
-from flask import Flask, render_template, jsonify, request
+import threading
+import logging
+
+from flask import Flask, render_template, jsonify, request, abort
+
+from config.logging_config import setup_logging
+from config.settings import LOG_LEVEL
+
+setup_logging(LOG_LEVEL)
+logger = logging.getLogger("aura.app")
+
 import main
-from core.voice import get_web_updates
+from core.voice import get_web_updates, talk
 
 app = Flask(__name__)
 
-# Global lock to prevent multiple requests from fighting for the microphone
-aura_lock = threading.Lock()
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["200 per minute"],
+        storage_uri="memory://",
+    )
+    logger.info("Rate limiter enabled.")
+except ImportError:
+    limiter = None
+    logger.warning("flask-limiter not installed — rate limiting disabled.")
 
-@app.route('/')
+try:
+    from flask_talisman import Talisman
+    Talisman(
+        app,
+        content_security_policy=False,   # disabled for local WebSpeech API support
+        force_https=False,                # local dev; enable in production
+        strict_transport_security=False,
+    )
+    logger.info("Talisman security headers enabled.")
+except ImportError:
+    logger.warning("flask-talisman not installed — security headers disabled.")
+
+_aura_lock = threading.Lock()
+_monitor_started = False
+
+
+@app.before_request
+def _ensure_monitor():
+    """Start proactive monitor once on first request."""
+    global _monitor_started
+    if not _monitor_started:
+        _monitor_started = True
+        try:
+            from core.alerts import start_proactive_monitor
+            start_proactive_monitor(talk)
+        except Exception as exc:
+            logger.warning("Could not start proactive monitor: %s", exc)
+
+
+# ROUTES
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/updates', methods=['GET'])
+
+@app.route("/status")
+def status():
+    """Health check endpoint."""
+    from core.db import ping as db_ping
+    db_ok = db_ping()
+    return jsonify({
+        "status": "ok",
+        "db": "connected" if db_ok else "disconnected",
+        "lock_held": _aura_lock.locked(),
+    })
+
+
+@app.route("/updates", methods=["GET"])
 def updates():
-    """Poll for pending speech updates from the backend"""
+    """Poll for pending speech updates from the backend."""
     msgs = get_web_updates()
     return jsonify({"messages": msgs})
 
-@app.route('/listen', methods=['POST'])
+
+@app.route("/listen", methods=["POST"])
 def listen():
-    # Wait up to 5 seconds to acquire the lock instead of instantly failing
-    acquired = aura_lock.acquire(timeout=5.0)
+    """Record one voice command via microphone and process it."""
+    acquired = _aura_lock.acquire(timeout=5.0)
     if not acquired:
-        return jsonify({"status": "error", "message": "AURA is busy processing a previous command. Please wait."}), 400
-    
+        logger.warning("Lock busy — rejected /listen request.")
+        return jsonify({"status": "error", "message": "AURA is busy. Please wait a moment."}), 429
+
     try:
         result = main.handle_single_command()
         return jsonify({
             "status": "success",
-            "command": result["command"],
+            "command": result.get("command"),
             "lang_code": result.get("lang_code", "en-US"),
-            "response": result["response"]
+            "response": result.get("response", ""),
         })
-    except Exception:
-        return jsonify({"status": "error", "message": "Something went wrong processing your request."}), 500
+    except Exception as exc:
+        import traceback
+        logger.error("listen() error: %s\n%s", exc, traceback.format_exc())
+        return jsonify({"status": "error", "message": f"Something went wrong: {exc}"}), 500
     finally:
-        aura_lock.release()
+        if _aura_lock.locked():
+            _aura_lock.release()
 
-@app.route('/reset', methods=['POST'])
-def reset():
-    """Manually clear the lock state if it gets stuck"""
+
+@app.route("/command", methods=["POST"])
+def text_command():
+    """
+    Process a text command directly — NO microphone required.
+    Body: {"command": "what time is it"}
+    Used by Quick Command chips and keyboard input.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    command = data.get("command", "").strip()
+    if not command:
+        return jsonify({"status": "error", "message": "command field is required"}), 400
+
+    lat = data.get("lat")
+    lon = data.get("lon")
+
+    import core.voice as _voice_mod
+    import commands.dispatcher as _disp_mod
+    import commands.communication as _comm_mod
+    responses: list[str] = []
+    _orig_talk = _voice_mod.talk
+    _orig_comm_talk = getattr(_comm_mod, "talk", None)
+
+    def _capture_talk(text):
+        responses.append(text)
+        _voice_mod._web_message_queue.append(text)
+
+    _voice_mod.talk = _capture_talk
+    _disp_mod.talk = _capture_talk
+    if _orig_comm_talk:
+        _comm_mod.talk = _capture_talk
+    _voice_mod.set_talk_handler(_capture_talk)
+
     try:
-        if aura_lock.locked():
-            aura_lock.release()
-        return jsonify({"status": "success", "message": "Assistant state has been reset."})
-    except Exception:
-        return jsonify({"status": "success", "message": "Attempted to reset state."})
+        from commands.dispatcher import process_command
+        process_command(command, gps_lat=lat, gps_lon=lon)
+    except Exception as exc:
+        logger.error("/command error for '%s': %s", command, exc)
+    finally:
+        _voice_mod.talk = _orig_talk
+        _voice_mod.set_talk_handler(None)
 
-if __name__ == '__main__':
-    port = 5000
-    use_ngrok = '--public' in sys.argv
+    combined = " ".join(dict.fromkeys(responses)).strip() or "Done."
+    logger.info("/command '%s' -> '%s'", command, combined[:80])
+    return jsonify({
+        "status": "success",
+        "command": command,
+        "response": combined,
+        "lang_code": "en-US",
+    })
+
+
+@app.route("/sos", methods=["POST"])
+def sos():
+    """
+    Trigger Emergency SOS directly — NO microphone required.
+    Sends WhatsApp message to the flagged emergency contact (Ashwin).
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    lat = data.get("lat")
+    lon = data.get("lon")
+
+    import core.voice as _voice_mod
+    import commands.communication as _comm_mod
+    responses: list[str] = []
+    _orig_talk = _voice_mod.talk
+    _orig_comm_talk = getattr(_comm_mod, "talk", None)
+
+    def _capture(text):
+        responses.append(text)
+
+    _voice_mod.talk = _capture
+    _comm_mod.talk = _capture
+    _voice_mod.set_talk_handler(_capture)
+
+    try:
+        from commands.communication import command_emergency_sos
+        command_emergency_sos(gps_lat=lat, gps_lon=lon)
+    except Exception as exc:
+        logger.error("/sos error: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
+    finally:
+        _voice_mod.talk = _orig_talk
+        if _orig_comm_talk:
+            _comm_mod.talk = _orig_comm_talk
+        _voice_mod.set_talk_handler(None)
+
+    combined = " ".join(responses).strip()
+    logger.warning("/sos activated -> %s", combined[:100])
+    return jsonify({"status": "ok", "response": combined})
+
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    """Manually clear the lock state if it gets stuck."""
+    released = False
+    try:
+        if _aura_lock.locked():
+            _aura_lock.release()
+            released = True
+    except RuntimeError:
+        pass  # wasn't locked by this thread
+    logger.info("Reset called — released: %s", released)
+    return jsonify({"status": "success", "message": "Assistant state has been reset."})
+
+
+
+@app.route("/contacts", methods=["GET"])
+def get_contacts():
+    try:
+        from core.db import get_all_contacts
+        return jsonify({"status": "ok", "contacts": get_all_contacts()})
+    except Exception as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.route("/contacts", methods=["POST"])
+def add_contact():
+    data = request.get_json(force=True, silent=True) or {}
+    name = data.get("name", "").strip()
+    phone = data.get("phone", "").strip()
+    if not name or not phone:
+        return jsonify({"status": "error", "message": "name and phone are required"}), 400
+    try:
+        from core.db import save_contact
+        save_contact(name, phone)
+        return jsonify({"status": "ok", "message": f"Contact {name} saved."})
+    except Exception as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.route("/contacts/<name>", methods=["DELETE"])
+def remove_contact(name: str):
+    try:
+        from core.db import delete_contact
+        deleted = delete_contact(name)
+        if deleted:
+            return jsonify({"status": "ok", "message": f"Contact {name} deleted."})
+        return jsonify({"status": "not_found"}), 404
+    except Exception as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+
+@app.route("/history", methods=["GET"])
+def history():
+    try:
+        from core.ai_chat import get_conversation_history
+        return jsonify({"status": "ok", "history": get_conversation_history()})
+    except Exception as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.route("/history", methods=["DELETE"])
+def clear_history():
+    try:
+        from core.ai_chat import clear_conversation
+        clear_conversation()
+        return jsonify({"status": "ok", "message": "Conversation cleared."})
+    except Exception as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+# ENTRY POINT
+
+if __name__ == "__main__":
+    port = int(next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--port"), 5000))
+    use_ngrok = "--public" in sys.argv
+    debug_mode = "--debug" in sys.argv
 
     if use_ngrok:
         try:
             from pyngrok import ngrok
             public_url = ngrok.connect(port)
-            print(f"\n{'='*50}")
-            print(f"  AURA is live! Share this URL:")
-            print(f"  {public_url}")
-            print(f"{'='*50}\n")
+            logger.info("AURA public URL: %s", public_url)
+            print(f"\n{'=' * 55}")
+            print(f"  ✅ AURA is live at: {public_url}")
+            print(f"{'=' * 55}\n")
         except ImportError:
             print("pyngrok not installed. Run: pip install pyngrok")
             sys.exit(1)
 
-    app.run(debug=False, port=port, host='0.0.0.0', threaded=True)
+    logger.info("Starting AURA on http://localhost:%d (debug=%s)", port, debug_mode)
+    app.run(debug=debug_mode, port=port, host="0.0.0.0", threaded=True)

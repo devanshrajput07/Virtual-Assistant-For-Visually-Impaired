@@ -5,7 +5,7 @@ import time
 pages_read = []
 
 def read_document_mode(talk, listen_for_command):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk("Camera not detected.")
         return

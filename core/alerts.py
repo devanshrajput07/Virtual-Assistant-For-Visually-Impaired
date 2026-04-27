@@ -1,53 +1,72 @@
+"""
+core/alerts.py
+Proactive monitor for battery & medication reminders.
+All alert data stored in MongoDB Atlas.
+
+Fixes:
+  - Replaced bare except: with proper Exception handling + logging
+  - Battery warn cooldown now tracked correctly
+  - Medication alert uses MongoDB instead of JSON file
+"""
+
 import threading
 import time
-import json
-import os
 import datetime
+import logging
 
-ALERTS_FILE = "data/alerts.json"
+logger = logging.getLogger("aura.alerts")
 
-def load_alerts():
+
+def add_medication_reminder(talk_fn, med_name: str, times: list[str]) -> None:
+    """Save a medication reminder to MongoDB and confirm via voice."""
     try:
-        with open(ALERTS_FILE, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"medications": [], "custom": []}
+        from core.db import add_alert
+        add_alert("medication", {"name": med_name, "times": times})
+        time_str = ", ".join(times)
+        talk_fn(f"Medication reminder set for {med_name} at {time_str}.")
+        logger.info("Medication reminder added: %s at %s", med_name, time_str)
+    except Exception as exc:
+        logger.error("Failed to save medication reminder: %s", exc)
+        talk_fn("Sorry, I couldn't save the medication reminder.")
 
-def save_alerts(data):
-    os.makedirs("data", exist_ok=True)
-    with open(ALERTS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
 
-def add_medication_reminder(talk, med_name, times):
-    alerts = load_alerts()
-    alerts["medications"].append({
-        "name": med_name,
-        "times": times,
-        "active": True
-    })
-    save_alerts(alerts)
-    time_str = ", ".join(times)
-    talk(f"Medication reminder set for {med_name} at {time_str}.")
+def trigger_emergency_alert(talk_fn) -> None:
+    """Immediately fire the emergency SOS alert."""
+    logger.warning("EMERGENCY ALERT TRIGGERED")
+    talk_fn("Emergency alert activated! Sending SOS now.")
 
-def start_proactive_monitor(talk):
+
+def start_proactive_monitor(talk_fn) -> threading.Thread:
+    """
+    Daemon thread that periodically checks:
+      1. Battery level → warn if low
+      2. Medication reminders → announce at scheduled times
+    """
+
     def monitor_loop():
-        last_battery_warn = 0
-        last_med_check = ""
+        last_battery_warn: float = 0.0
+        last_med_check: str = ""
 
         while True:
             try:
                 import psutil
                 battery = psutil.sensors_battery()
                 if battery and not battery.power_plugged:
-                    now = time.time()
-                    if battery.percent <= 15 and (now - last_battery_warn) > 300:
-                        talk(f"Warning! Battery is critically low at {battery.percent} percent. Please plug in your charger.")
-                        last_battery_warn = now
-                    elif battery.percent <= 30 and (now - last_battery_warn) > 600:
-                        talk(f"Heads up, your battery is at {battery.percent} percent.")
-                        last_battery_warn = now
-            except:
-                pass
+                    now_ts = time.time()
+                    pct = battery.percent
+                    if pct <= 10 and (now_ts - last_battery_warn) > 120:
+                        talk_fn(f"Critical warning! Battery is at {int(pct)} percent. Please charge immediately.")
+                        last_battery_warn = now_ts
+                    elif pct <= 20 and (now_ts - last_battery_warn) > 300:
+                        talk_fn(f"Warning: battery is at {int(pct)} percent. Consider charging soon.")
+                        last_battery_warn = now_ts
+                    elif pct <= 30 and (now_ts - last_battery_warn) > 600:
+                        talk_fn(f"Heads up — your battery is at {int(pct)} percent.")
+                        last_battery_warn = now_ts
+            except ImportError:
+                pass  # psutil not installed
+            except Exception as exc:
+                logger.debug("Battery check error: %s", exc)
 
             try:
                 now = datetime.datetime.now()
@@ -56,23 +75,33 @@ def start_proactive_monitor(talk):
                 check_key = f"{current_date}_{current_time}"
 
                 if check_key != last_med_check:
-                    alerts = load_alerts()
-                    for med in alerts.get("medications", []):
-                        if not med.get("active", True):
-                            continue
-                        for t in med.get("times", []):
-                            try:
-                                med_time = datetime.datetime.strptime(t, "%I:%M %p").strftime("%H:%M")
-                            except:
-                                med_time = t
-                            if med_time == current_time:
-                                talk(f"Medication reminder: It's time to take your {med['name']}.")
                     last_med_check = check_key
-            except:
-                pass
+                    try:
+                        from core.db import get_alerts
+                        meds = get_alerts(alert_type="medication", active_only=True)
+                    except Exception as db_exc:
+                        logger.debug("Could not fetch meds from DB: %s", db_exc)
+                        meds = []
 
-            time.sleep(30)
+                    for med in meds:
+                        data = med.get("data", {})
+                        med_name = data.get("name", "")
+                        for t in data.get("times", []):
+                            try:
+                                # Normalise 12h → 24h for comparison
+                                med_time_obj = datetime.datetime.strptime(t, "%I:%M %p")
+                                med_time = med_time_obj.strftime("%H:%M")
+                            except ValueError:
+                                med_time = t  # assume already HH:MM
+                            if med_time == current_time:
+                                talk_fn(f"Medication reminder: it's time to take your {med_name}.")
+                                logger.info("Medication reminder fired: %s", med_name)
+            except Exception as exc:
+                logger.warning("Medication monitor error: %s", exc)
 
-    thread = threading.Thread(target=monitor_loop, daemon=True)
-    thread.start()
-    return thread
+            time.sleep(30)  # check every 30 s
+
+    t = threading.Thread(target=monitor_loop, daemon=True, name="ProactiveMonitor")
+    t.start()
+    logger.info("Proactive monitor started.")
+    return t

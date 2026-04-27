@@ -2,73 +2,186 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AURA — Smart Visual Assistant</title>
-    <meta name="description"
-        content="AURA: Voice-Controlled AI Assistant for Visually Impaired Navigation with 50+ voice commands">
-    
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
-        rel="stylesheet">
-    
-    <!-- Core Styles -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURA — Intelligent Voice Assistant for Visually Impaired</title>
+  <meta name="description"
+    content="AURA: AI-powered voice assistant for the visually impaired. Navigate, detect objects, get weather, set reminders and more — all hands-free." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;700;900&display=swap"
+    rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 </head>
 
-<body>
-    <canvas id="particles"></canvas>
+<body data-theme="dark" data-contrast="normal" data-font-size="normal">
+  <!-- Particle Canvas -->
+  <canvas id="particles" aria-hidden="true"></canvas>
 
-    <div class="app">
-        <header>
-            <div class="logo" role="heading" aria-level="1">AURA</div>
-            <p class="tagline">Voice AI for Visually Impaired Navigation</p>
-        </header>
+  <!-- Main App -->
+  <div class="app" role="main">
 
-        <div class="main-area">
-            <div class="left-panel">
-                <div class="robot-wrapper" id="talk-btn" role="button" aria-label="Tap to speak to AURA" tabindex="0">
-                    <div class="pulse-ring"></div>
-                    <div class="pulse-ring" style="animation-delay: 1s"></div>
-                    <div class="robot" id="robot-state">
-                        <div class="robot-inner">
-                            <div class="eyes">
-                                <div class="eye"></div>
-                                <div class="eye"></div>
-                            </div>
-                            <div class="mouth"></div>
-                        </div>
-                    </div>
+    <!--  HEADER  -->
+    <header class="header" role="banner">
+      <div class="header-inner">
+        <div class="logo" role="heading" aria-level="1">
+          <span class="logo-paw" aria-hidden="true">🐾</span>
+          AURA
+        </div>
+        <p class="tagline">Intelligent Voice Assistant · Visually Impaired Navigation</p>
+
+        <!-- DB Status badge -->
+        <div class="db-badge" id="db-badge" aria-live="polite" aria-label="Database connection status">
+          <span class="db-dot" id="db-dot"></span>
+          <span id="db-label">Checking…</span>
+        </div>
+      </div>
+
+    </header>
+
+    <!--  MAIN AREA  -->
+    <div class="main-area">
+
+      <!--  LEFT PANEL: Dog Robot  -->
+      <div class="left-panel">
+
+        <!-- Robot -->
+        <div class="robot-wrapper" id="talk-btn" role="button" tabindex="0"
+          aria-label="Tap to speak to AURA" aria-pressed="false">
+
+          <!-- Pulse rings -->
+          <div class="pulse-ring pulse-ring-1" aria-hidden="true"></div>
+          <div class="pulse-ring pulse-ring-2" aria-hidden="true"></div>
+
+          <!-- Dog Robot Head -->
+          <div class="dog-robot" id="robot-state" aria-hidden="true">
+
+            <!-- Ears -->
+            <div class="ear ear-left"></div>
+            <div class="ear ear-right"></div>
+
+            <!-- Head -->
+            <div class="dog-head">
+
+              <!-- Eyes -->
+              <div class="eyes-row">
+                <div class="eye-container">
+                  <div class="eye" id="eye-left">
+                    <div class="pupil"></div>
+                    <div class="eye-shine"></div>
+                  </div>
                 </div>
-
-                <div class="status-text" id="instruction">Say "Hey AURA" or Tap · <span class="kbd">Space</span></div>
-
-                <div class="controls">
-                    <button class="btn" id="reset-btn" aria-label="Reset assistant">⟳ Reset</button>
-                    <button class="btn" id="clear-btn" aria-label="Clear chat history">✕ Clear Chat</button>
+                <div class="eye-container">
+                  <div class="eye" id="eye-right">
+                    <div class="pupil"></div>
+                    <div class="eye-shine"></div>
+                  </div>
                 </div>
+              </div>
+
+              <!-- Snout -->
+              <div class="snout">
+                <div class="nose"></div>
+                <div class="mouth-area">
+                  <div class="mouth-line mouth-line-left"></div>
+                  <div class="mouth-line mouth-line-right"></div>
+                </div>
+              </div>
+
+              <!-- Cheek blush marks -->
+              <div class="blush blush-left" aria-hidden="true"></div>
+              <div class="blush blush-right" aria-hidden="true"></div>
             </div>
 
-            <div class="right-panel">
-                <div class="chat-header">
-                    <span class="dot"></span>
-                    Conversation
-                </div>
-                    <div class="chat-body" id="chat-body">
-                        <div class="welcome-msg">
-                            👋 Welcome! I'm <strong>AURA</strong>, your intelligent voice assistant.<br>
-                            Say <strong>"Hey AURA"</strong> or tap the robot to start.<br>
-                            I can see, listen, and help you navigate the world.
-                        </div>
-                    </div>
+            <!-- Tail (bottom ornament) -->
+            <div class="tail-area" aria-hidden="true">
+              <div class="tail"></div>
             </div>
+
+          </div><!-- /dog-robot -->
+        </div><!-- /robot-wrapper -->
+
+        <!-- Status Text -->
+        <div class="status-text" id="instruction" aria-live="polite" aria-atomic="true">
+          Tap the dog or press <kbd class="kbd">Space</kbd>
         </div>
 
-        <footer>AURA · Built with ❤️ for accessibility</footer>
-    </div>
+        <!-- Waveform (shown while speaking) -->
+        <div class="waveform" id="waveform" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
 
-    <!-- Core Logic -->
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+        <!-- Controls -->
+        <div class="controls">
+          <button class="btn btn-secondary" id="reset-btn" aria-label="Reset assistant state">
+            <span aria-hidden="true">⟳</span> Reset
+          </button>
+          <button class="btn btn-secondary" id="clear-btn" aria-label="Clear chat history">
+            <span aria-hidden="true">✕</span> Clear
+          </button>
+        </div>
+
+        <!-- EMERGENCY SOS -->
+        <button class="sos-btn" id="sos-btn" aria-label="Emergency SOS — send alert to emergency contact">
+          🚨 EMERGENCY SOS
+        </button>
+
+        <!-- Quick Commands -->
+        <div class="quick-commands" role="group" aria-label="Quick voice commands">
+          <p class="quick-label" aria-hidden="true">Quick Commands</p>
+          <div class="chips">
+            <button class="chip" data-cmd="detect objects" aria-label="Detect objects around me">👁 Detect Objects</button>
+            <button class="chip" data-cmd="navigate" aria-label="Start navigation mode">🧭 Navigate</button>
+            <button class="chip" data-cmd="weather" aria-label="Get current weather">🌤 Weather</button>
+            <button class="chip" data-cmd="what time is it" aria-label="Get current time">🕐 Time</button>
+            <button class="chip" data-cmd="how far" aria-label="Estimate distance to nearest object">📏 Distance</button>
+            <button class="chip" data-cmd="daily briefing" aria-label="Get your daily briefing">📋 Briefing</button>
+            <button class="chip" data-cmd="tell me a joke" aria-label="Tell me a joke">😄 Joke</button>
+            <button class="chip" data-cmd="battery status" aria-label="Check battery level">🔋 Battery</button>
+          </div>
+        </div>
+
+      </div><!-- /left-panel -->
+
+      <!--  RIGHT PANEL: Chat  -->
+      <div class="right-panel">
+        <!-- Chat Header -->
+        <div class="chat-header">
+          <div class="chat-header-left">
+            <div class="online-dot" aria-hidden="true"></div>
+            <span>Conversation</span>
+          </div>
+          <div class="chat-header-actions">
+            <button class="icon-btn" id="history-btn" aria-label="View conversation history" title="History">📜</button>
+          </div>
+        </div>
+
+        <!-- Chat Body -->
+        <div class="chat-body" id="chat-body" role="log" aria-live="polite" aria-label="Conversation">
+          <div class="welcome-msg">
+            <div class="welcome-icon" aria-hidden="true">🐶</div>
+            <strong>Hey there! I'm AURA.</strong><br />
+            Your personal voice assistant — designed for accessibility.<br />
+            Say <strong>"Hey AURA"</strong> or tap me to start.<br />
+            <span class="welcome-hint">I can see, listen, and help you navigate the world.</span>
+          </div>
+        </div>
+      </div><!-- /right-panel -->
+
+    </div><!-- /main-area -->
+
+
+
+  </div><!-- /app -->
+
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 
 </html>

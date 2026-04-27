@@ -13,7 +13,7 @@ client = Groq(api_key=GROQ_KEY)
 model = YOLO("models/yolov8n.pt")
 
 def describe_scene(talk):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk("Camera not detected.")
         return
