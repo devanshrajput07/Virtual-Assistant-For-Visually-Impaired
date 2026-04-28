@@ -1,13 +1,8 @@
-"""
-settings.py
-Central configuration for AURA. Loads from .env file.
-"""
 import os
 import logging
 from dotenv import load_dotenv
 
 load_dotenv()
-
 logger = logging.getLogger("aura.config")
 
 #  API Keys 
@@ -26,16 +21,10 @@ if not GROQ_KEY:
     )
 
 if not NEWS_API_KEY:
-    logger.warning(
-        "NEWS_API_KEY is not set — news and briefing commands will be unavailable. "
-        "Get a free key at https://newsapi.org"
-    )
+    logger.warning("NEWS_API_KEY is not set — news and briefing commands will be unavailable.")
 
 if not MONGODB_URI:
-    logger.warning(
-        "MONGODB_URI is not set — the app will use in-memory dicts as fallback. "
-        "Set MONGODB_URI=<your Atlas connection string> in .env for persistence."
-    )
+    logger.warning("MONGODB_URI is not set — the app will use in-memory dicts as fallback.")
 
 #  App & Website Maps 
 APP_MAP = {

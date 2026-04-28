@@ -1,12 +1,3 @@
-"""
-vision/depth_estimation.py
-Robust MiDaS depth estimation with:
-  - Lazy loading (no import-time crash)
-  - command_estimate_depth() function (was missing — caused NameError in dispatcher)
-  - Human-readable distance buckets
-  - Graceful fallback if MiDaS is unavailable
-"""
-
 import logging
 import numpy as np
 import cv2
@@ -15,12 +6,10 @@ logger = logging.getLogger("aura.vision.depth")
 
 _midas = None
 _transform_fn = None
-_loaded = False          # True once we've attempted loading
-_available = False       # True if load succeeded
-
+_loaded = False
+_available = False
 
 def _load_midas():
-    """Attempt to load MiDaS from torch.hub (lazy, once)."""
     global _midas, _transform_fn, _loaded, _available
 
     if _loaded:
@@ -44,7 +33,6 @@ def _load_midas():
         if _midas is None:
             raise RuntimeError("All MiDaS model variants failed to load.")
 
-        # Choose transform
         _transform_fn = (
             getattr(hub_transforms, "dpt_transform", None)
             or getattr(hub_transforms, "small_transform", None)
@@ -60,18 +48,11 @@ def _load_midas():
 
     return _available
 
-
-
 def estimate_depth(frame: np.ndarray) -> np.ndarray | None:
-    """
-    Returns normalised depth map (0-1, higher=closer) or None if MiDaS unavailable.
-    Input: BGR OpenCV frame (H, W, 3).
-    """
     if not _load_midas():
         return None
 
     import torch
-
     img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     input_tensor = _transform_fn(img)
 
@@ -86,26 +67,16 @@ def estimate_depth(frame: np.ndarray) -> np.ndarray | None:
             prediction = prediction[0]
         depth_map = prediction.squeeze().cpu().numpy()
 
-    # Normalise to 0-1
     mn, mx = depth_map.min(), depth_map.max()
     if mx - mn > 1e-6:
         depth_map = (depth_map - mn) / (mx - mn)
     else:
         depth_map = np.zeros_like(depth_map, dtype=np.float32)
 
-    # Resize to match original frame
     depth_map = cv2.resize(depth_map, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_CUBIC)
     return depth_map.astype(np.float32)
 
-
 def estimate_object_distance(frame: np.ndarray, boxes: list) -> list[tuple[str, float]]:
-    """
-    Args:
-        frame:  BGR OpenCV frame.
-        boxes:  List of (x1, y1, x2, y2, label).
-    Returns:
-        List of (label, avg_depth_value) — higher value = object is closer.
-    """
     depth_map = estimate_depth(frame)
     if depth_map is None:
         return []
@@ -124,9 +95,7 @@ def estimate_object_distance(frame: np.ndarray, boxes: list) -> list[tuple[str, 
         distances.append((label, float(np.mean(roi))))
     return distances
 
-
 def _depth_bucket(avg_depth: float) -> str:
-    """Convert normalised depth value to human-readable distance label."""
     if avg_depth > 0.80:
         return "extremely close — under one metre"
     elif avg_depth > 0.60:
@@ -138,14 +107,7 @@ def _depth_bucket(avg_depth: float) -> str:
     else:
         return "far away — more than eight metres"
 
-
-# Bug fix: this function was called by dispatcher but did NOT EXIST before.
-
 def command_estimate_depth(talk_fn) -> None:
-    """
-    Called when user says 'how far' or 'distance'.
-    Opens camera, takes one frame, estimates depth of central object.
-    """
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         talk_fn("Camera not detected. Cannot estimate distance.")
@@ -154,7 +116,6 @@ def command_estimate_depth(talk_fn) -> None:
     talk_fn("Checking the distance, one moment.")
 
     try:
-        # Read a few frames to let camera auto-expose
         for _ in range(5):
             cap.read()
 
@@ -164,7 +125,6 @@ def command_estimate_depth(talk_fn) -> None:
             return
 
         if not _load_midas():
-            # Fallback: use bounding-box-size heuristic via YOLO
             _depth_heuristic_fallback(frame, talk_fn)
             return
 
@@ -173,7 +133,6 @@ def command_estimate_depth(talk_fn) -> None:
             talk_fn("Depth estimation is not available right now.")
             return
 
-        # Sample the central 20% of the frame
         h, w = depth_map.shape
         cy1, cy2 = int(h * 0.4), int(h * 0.6)
         cx1, cx2 = int(w * 0.4), int(w * 0.6)
@@ -187,12 +146,7 @@ def command_estimate_depth(talk_fn) -> None:
     finally:
         cap.release()
 
-
 def _depth_heuristic_fallback(frame: np.ndarray, talk_fn) -> None:
-    """
-    Simple size-based depth heuristic when MiDaS is unavailable.
-    Runs YOLO and guesses distance from bounding-box area.
-    """
     try:
         from vision.object_detection import get_yolo_model
         model = get_yolo_model()
@@ -215,7 +169,6 @@ def _depth_heuristic_fallback(frame: np.ndarray, talk_fn) -> None:
             talk_fn("No objects detected close to you.")
             return
 
-        # Pick the largest object (most likely closest)
         found.sort(key=lambda x: x[1], reverse=True)
         name, ratio = found[0]
 

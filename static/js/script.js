@@ -1,19 +1,13 @@
-/*
-   AURA script.js  —  Modular, clean frontend logic
-   Modules: Particles · Robot · Chat · Voice · API · A11y
-*/
 'use strict';
 
-// MODULE: CONFIG
 const CONFIG = {
-  pollInterval: 1000,     // ms — how often to poll /updates
-  listenTimeout: 60000,   // ms — abort if /listen takes too long
+  pollInterval: 1000,
+  listenTimeout: 60000,
   wakeWords: ['hey aura', 'hi aura', 'aura', 'ok aura', 'okay aura', 'wake up aura'],
   ttsRate: 1.05,
   ttsPitch: 1.0,
 };
 
-// MODULE: PARTICLES
 const Particles = (() => {
   const canvas = document.getElementById('particles');
   const ctx = canvas.getContext('2d');
@@ -33,7 +27,6 @@ const Particles = (() => {
       this.vx = (Math.random() - 0.5) * 0.22;
       this.vy = (Math.random() - 0.5) * 0.22;
       this.opacity = Math.random() * 0.35 + 0.08;
-      // Mix warm amber and purple tones
       this.hue = Math.random() > 0.5 ? `249,115,22` : `192,132,252`;
     }
     update() {
@@ -62,7 +55,6 @@ const Particles = (() => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     items.forEach(p => { p.update(); p.draw(); });
 
-    // Draw connecting lines between nearby particles
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
         const dx = items[i].x - items[j].x;
@@ -84,16 +76,13 @@ const Particles = (() => {
   return { init };
 })();
 
-// MODULE: ROBOT (DOM state)
 const Robot = (() => {
   const wrapper   = document.getElementById('talk-btn');
   const robotEl   = document.getElementById('robot-state');
   const statusEl  = document.getElementById('instruction');
   const waveform  = document.getElementById('waveform');
-
   let currentState = 'idle';
 
-  // Pupil tracking
   const eyeLeft  = document.getElementById('eye-left');
   const eyeRight = document.getElementById('eye-right');
 
@@ -115,7 +104,7 @@ const Robot = (() => {
 
   function setState(state) {
     currentState = state;
-    robotEl.className = 'dog-robot'; // reset
+    robotEl.className = 'dog-robot';
     wrapper.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
 
     switch (state) {
@@ -139,11 +128,10 @@ const Robot = (() => {
         statusEl.textContent = '🔊 Speaking…';
         waveform.classList.add('active');
         break;
-      default: // idle
+      default:
         wrapper.classList.remove('listening', 'thinking');
         statusEl.innerHTML = 'Tap the dog or press <kbd class="kbd">Space</kbd>';
         waveform.classList.remove('active');
-        // Reset pupils
         [eyeLeft, eyeRight].forEach(eye => {
           if (eye) {
             const p = eye.querySelector('.pupil');
@@ -157,7 +145,6 @@ const Robot = (() => {
   return { setState, wrapper };
 })();
 
-// MODULE: CHAT
 const Chat = (() => {
   const body = document.getElementById('chat-body');
 
@@ -181,6 +168,36 @@ const Chat = (() => {
     body.scrollTop = body.scrollHeight;
   }
 
+  function addPlaceholder(role) {
+    const welcome = body.querySelector('.welcome-msg');
+    if (welcome) welcome.remove();
+
+    const msg = document.createElement('div');
+    msg.className = `msg ${role} placeholder`;
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = role === 'user' ? 'You' : 'AURA';
+
+    const content = document.createElement('span');
+    content.innerHTML = '<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>';
+
+    msg.appendChild(label);
+    msg.appendChild(content);
+    body.appendChild(msg);
+    body.scrollTop = body.scrollHeight;
+    return msg;
+  }
+
+  function updatePlaceholder(placeholder, text) {
+    if (!placeholder) return;
+    const content = placeholder.querySelector('span');
+    if (content) {
+      content.textContent = text;
+      placeholder.classList.remove('placeholder');
+    }
+  }
+
   function clear() {
     body.innerHTML = `
       <div class="welcome-msg">
@@ -190,16 +207,14 @@ const Chat = (() => {
       </div>`;
   }
 
-  // De-duplicate assistant messages within same "turn"
   function isDuplicate(text) {
     const msgs = Array.from(body.querySelectorAll('.msg.assistant span'));
     return msgs.some(m => m.textContent.trim() === text.trim());
   }
 
-  return { addMessage, clear, isDuplicate };
+  return { addMessage, addPlaceholder, updatePlaceholder, clear, isDuplicate };
 })();
 
-// MODULE: VOICE (browser TTS)
 const Voice = (() => {
   let speaking = false;
 
@@ -210,23 +225,37 @@ const Voice = (() => {
   }
 
   function speak(text, lang) {
-    window.speechSynthesis.cancel();
-    speaking = true;
-    Robot.setState('speaking');
+    if (!text) return;
+    try {
+      window.speechSynthesis.cancel();
+      speaking = true;
+      Robot.setState('speaking');
 
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang  = lang || 'en-US';
-    utt.rate  = CONFIG.ttsRate;
-    utt.pitch = CONFIG.ttsPitch;
-    const voice = _getBestVoice(utt.lang);
-    if (voice) utt.voice = voice;
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang  = lang || 'en-US';
+      utt.rate  = CONFIG.ttsRate;
+      utt.pitch = CONFIG.ttsPitch;
+      const voice = _getBestVoice(utt.lang);
+      if (voice) utt.voice = voice;
 
-    utt.onend = utt.onerror = () => {
-      speaking = false;
-      Robot.setState('idle');
-      WakeWord.safeStart();
-    };
-    window.speechSynthesis.speak(utt);
+      utt.onend = () => {
+        speaking = false;
+        if (!isProcessing) {
+          Robot.setState('idle');
+          WakeWord.safeStart();
+        }
+      };
+      
+      utt.onerror = (e) => {
+        console.error('[Voice] Error:', e);
+        speaking = false;
+        if (!isProcessing) Robot.setState('idle');
+      };
+
+      setTimeout(() => window.speechSynthesis.speak(utt), 50);
+    } catch (err) {
+      console.error('[Voice] critical error:', err);
+    }
   }
 
   function speakAndWait(text, lang) {
@@ -238,7 +267,7 @@ const Voice = (() => {
       const voice = _getBestVoice(utt.lang);
       if (voice) utt.voice = voice;
       utt.onend = utt.onerror = resolve;
-      setTimeout(resolve, 5000); // safety timeout
+      setTimeout(resolve, 5000);
       window.speechSynthesis.speak(utt);
     });
   }
@@ -248,12 +277,27 @@ const Voice = (() => {
   return { speak, speakAndWait, isSpeaking };
 })();
 
-// MODULE: API
 const API = (() => {
   async function listen(signal) {
+    let coords = null;
+    if ("geolocation" in navigator) {
+      try {
+        coords = await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+            () => resolve(null),
+            { timeout: 5000, maximumAge: 60000 }
+          );
+        });
+      } catch (e) {}
+    }
+
+    const payload = coords ? JSON.stringify(coords) : '{}';
+
     const resp = await fetch('/listen', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: payload,
       signal,
     });
     return resp;
@@ -275,7 +319,18 @@ const API = (() => {
     } catch { return { db: 'disconnected' }; }
   }
 
-  // Text command — NO microphone (used by chips, keyboard input)
+  async function flushUpdates() {
+    try {
+      const { messages } = await updates();
+      if (messages?.length) {
+        messages.forEach(m => {
+          Chat.addMessage(m, 'assistant');
+          Voice.speak(m);
+        });
+      }
+    } catch (_) { }
+  }
+
   async function command(text, coords) {
     const payload = { command: text };
     if (coords) {
@@ -290,7 +345,6 @@ const API = (() => {
     return resp.json();
   }
 
-  // SOS — direct trigger, no mic, accepts optional exact GPS
   async function triggerSOS(coords) {
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
     if (coords) opts.body = JSON.stringify(coords);
@@ -298,10 +352,9 @@ const API = (() => {
     return resp.json();
   }
 
-  return { listen, reset, updates, status, command, triggerSOS };
+  return { listen, reset, updates, status, command, triggerSOS, flushUpdates };
 })();
 
-// MODULE: WAKE WORD
 const WakeWord = (() => {
   let recognizer = null;
 
@@ -338,7 +391,7 @@ const WakeWord = (() => {
 
   function safeStart() {
     if (!recognizer) return;
-    try { recognizer.start(); } catch (_) { /* already running */ }
+    try { recognizer.start(); } catch (_) { }
   }
 
   function safeStop() {
@@ -364,10 +417,8 @@ const WakeWord = (() => {
   return { init, safeStart, safeStop };
 })();
 
-// MODULE: A11Y (accessibility controls)
 const A11y = (() => {
   const body = document.body;
-
   const fontBtns = {
     sm: document.getElementById('font-sm-btn'),
     md: document.getElementById('font-md-btn'),
@@ -402,26 +453,6 @@ const A11y = (() => {
   return { init };
 })();
 
-// DB STATUS CHECKER
-async function checkDbStatus() {
-  const dot   = document.getElementById('db-dot');
-  const label = document.getElementById('db-label');
-  try {
-    const s = await API.status();
-    if (s.db === 'connected') {
-      dot.className = 'db-dot connected';
-      label.textContent = 'MongoDB Connected';
-    } else {
-      dot.className = 'db-dot error';
-      label.textContent = 'DB Offline';
-    }
-  } catch {
-    dot.className = 'db-dot error';
-    label.textContent = 'DB Offline';
-  }
-}
-
-// CORE INTERACTION
 let isProcessing = false;
 let hasGreeted   = false;
 let pollTimer    = null;
@@ -431,7 +462,6 @@ async function startListening() {
   isProcessing = true;
   WakeWord.safeStop();
 
-  // First-time greeting
   if (!hasGreeted) {
     hasGreeted = true;
     Robot.setState('speaking');
@@ -439,8 +469,8 @@ async function startListening() {
   }
 
   Robot.setState('listening');
+  const userPlaceholder = Chat.addPlaceholder('user');
 
-  // Poll for live updates during processing
   pollTimer = setInterval(async () => {
     if (!isProcessing) { clearInterval(pollTimer); return; }
     try {
@@ -461,9 +491,11 @@ async function startListening() {
   try {
     const resp = await API.listen(controller.signal);
     clearInterval(pollTimer);
+    await API.flushUpdates();
 
     if (resp.status === 429) {
       const d = await resp.json();
+      Chat.updatePlaceholder(userPlaceholder, '...');
       Chat.addMessage(d.message, 'assistant');
       done();
       return;
@@ -474,7 +506,12 @@ async function startListening() {
     clearTimeout(timeout);
 
     if (data.status === 'success') {
-      if (data.command) Chat.addMessage(data.command, 'user');
+      if (data.command) {
+        Chat.updatePlaceholder(userPlaceholder, data.command);
+      } else {
+        Chat.updatePlaceholder(userPlaceholder, '...');
+      }
+
       const response = data.response;
       if (response && response !== 'Command processed.') {
         if (!Chat.isDuplicate(response)) {
@@ -484,12 +521,15 @@ async function startListening() {
           return;
         }
       }
-    } else if (data.message) {
-      Chat.addMessage('Error: ' + data.message, 'assistant');
+    } else {
+      Chat.updatePlaceholder(userPlaceholder, '...');
+      if (data.message) Chat.addMessage('Error: ' + data.message, 'assistant');
     }
 
   } catch (err) {
     clearInterval(pollTimer);
+    await API.flushUpdates();
+    Chat.updatePlaceholder(userPlaceholder, '...');
     if (err.name === 'AbortError') {
       Chat.addMessage('Connection timed out. Please try again.', 'assistant');
     } else {
@@ -507,7 +547,6 @@ function done() {
   WakeWord.safeStart();
 }
 
-// QUICK COMMANDS  — uses /command (text, no microphone)
 async function sendTextCommand(cmdText, labelText) {
   if (isProcessing) return;
   isProcessing = true;
@@ -522,21 +561,43 @@ async function sendTextCommand(cmdText, labelText) {
         navigator.geolocation.getCurrentPosition(
           p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
           () => resolve(null),
-          { timeout: 3000 }
+          { timeout: 5000, maximumAge: 60000 }
         );
       });
     } catch (e) {}
   }
 
+  let pollTimer;
+  pollTimer = setInterval(async () => {
+    if (!isProcessing) { clearInterval(pollTimer); return; }
+    try {
+      const { messages } = await API.updates();
+      if (messages?.length) {
+        messages.forEach(m => {
+          Chat.addMessage(m, 'assistant');
+          Voice.speak(m);
+        });
+        Robot.setState('listening');
+      }
+    } catch (_) { }
+  }, CONFIG.pollInterval);
+
   try {
     const data = await API.command(cmdText, coords);
+    clearInterval(pollTimer);
+    await API.flushUpdates();
     if (data.status === 'success' && data.response) {
-      Chat.addMessage(data.response, 'assistant');
-      Voice.speak(data.response, data.lang_code);
-      done();
-      return;
+      const response = data.response;
+      if (response && response !== 'Command processed.') {
+        if (!Chat.isDuplicate(response)) {
+          Chat.addMessage(response, 'assistant');
+          Voice.speak(response, data.lang_code);
+        }
+      }
     }
   } catch (err) {
+    clearInterval(pollTimer);
+    await API.flushUpdates();
     Chat.addMessage('Command failed. Please try again.', 'assistant');
     console.error('[AURA chip]', err);
   }
@@ -550,8 +611,6 @@ document.querySelectorAll('.chip').forEach(chip => {
   });
 });
 
-
-// SOS BUTTON — uses /sos (direct, no microphone)
 document.getElementById('sos-btn')?.addEventListener('click', async () => {
   if (isProcessing) return;
   isProcessing = true;
@@ -565,7 +624,7 @@ document.getElementById('sos-btn')?.addEventListener('click', async () => {
       coords = await new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-          err => resolve(null), // silently fallback to IP if denied
+          err => resolve(null),
           { timeout: 5000, maximumAge: 0, enableHighAccuracy: true }
         );
       });
@@ -586,17 +645,11 @@ document.getElementById('sos-btn')?.addEventListener('click', async () => {
   done();
 });
 
-
-
-// EVENT LISTENERS
-
-// Main talk button
 Robot.wrapper.addEventListener('click', startListening);
 Robot.wrapper.addEventListener('keydown', e => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startListening(); }
 });
 
-// Keyboard shortcut: Space
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !isProcessing &&
       document.activeElement.tagName !== 'INPUT' &&
@@ -606,7 +659,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Reset
 document.getElementById('reset-btn')?.addEventListener('click', async () => {
   const btn = document.getElementById('reset-btn');
   if (btn) btn.textContent = '⟳ …';
@@ -618,19 +670,13 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
   if (btn) btn.innerHTML = '⟳ Reset';
 });
 
-// Clear
 document.getElementById('clear-btn')?.addEventListener('click', () => Chat.clear());
 
-// INIT
 (function init() {
   Particles.init();
   A11y.init();
   WakeWord.init();
-  // Pre-load voices
   window.speechSynthesis.getVoices();
   window.speechSynthesis.addEventListener?.('voiceschanged', () => window.speechSynthesis.getVoices());
-  // DB status check
-  checkDbStatus();
-  setInterval(checkDbStatus, 30000);
   console.info('%c🐾 AURA v2.0 — Voice Assistant for Visually Impaired', 'color:#f97316;font-weight:bold;font-size:14px;');
 })();

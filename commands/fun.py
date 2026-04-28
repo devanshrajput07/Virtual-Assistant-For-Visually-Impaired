@@ -42,9 +42,8 @@ def command_roll_dice():
 def command_spell_word(command):
     word = command.replace("spell", "").replace("how do you spell", "").strip()
     if not word:
-        talk("What word should I spell?")
-        word = accept_command_text()
-        if not word: return
+        talk("Please specify the word you'd like me to spell. For example, say: spell apple.")
+        return
     talk(f"{word} is spelled:")
     spelled = ", ".join(letter for letter in word.upper() if letter != " ")
     talk(spelled)

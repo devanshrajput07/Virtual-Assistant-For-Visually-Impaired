@@ -1,14 +1,3 @@
-"""
-commands/productivity.py
-All productivity commands for AURA.
-To-do and alert data stored in MongoDB Atlas.
-
-Fixes:
-  - Replaced eval() with simpleeval (safe expression evaluation)
-  - Todo list uses MongoDB
-  - Proper logging
-"""
-
 import re
 import math
 import time
@@ -21,8 +10,6 @@ logger = logging.getLogger("aura.commands.productivity")
 active_timers: list[threading.Thread] = []
 active_reminders: list[threading.Thread] = []
 active_alarms: list[threading.Thread] = []
-
-
 
 def command_calculate(command: str) -> None:
     from core.voice import talk
@@ -42,20 +29,17 @@ def command_calculate(command: str) -> None:
     for word, symbol in replacements.items():
         expr = expr.replace(word, symbol)
 
-    # Handle square root
     expr = re.sub(r"square root of\s*(\d+\.?\d*)", r"sqrt(\1)", expr)
     expr = expr.strip()
 
     try:
-        from simpleeval import simple_eval, EvalWithCompoundTypes
+        from simpleeval import simple_eval
         result = simple_eval(expr, functions={"sqrt": math.sqrt, "abs": abs, "round": round})
         if isinstance(result, float):
             result = round(result, 6)
-            # Strip trailing zeros
             result = int(result) if result == int(result) else result
         talk(f"The answer is {result}.")
     except Exception:
-        # Fallback: try stricter re-check before eval
         safe_chars = set("0123456789+-*/().%^ ")
         clean = re.sub(r"sqrt\([^)]*\)", "", expr)
         if all(c in safe_chars for c in clean):
@@ -70,8 +54,6 @@ def command_calculate(command: str) -> None:
                 pass
         talk("Sorry, I couldn't calculate that. Please try a simpler expression.")
         logger.debug("Calculator failed on: %s", expr)
-
-
 
 def command_set_timer(command: str) -> None:
     from core.voice import talk
@@ -108,10 +90,8 @@ def command_set_timer(command: str) -> None:
     t.start()
     active_timers.append(t)
 
-
-
 def command_set_reminder(command: str) -> None:
-    from core.voice import talk, accept_command_text
+    from core.voice import talk
     minutes = 0
 
     min_m = re.search(r"(\d+)\s*minute", command)
@@ -121,7 +101,6 @@ def command_set_reminder(command: str) -> None:
     if hr_m:
         minutes += int(hr_m.group(1)) * 60
 
-    # Extract reminder text (remove time words)
     reminder_text = command
     for kw in ["remind me to", "remind me", "reminder to", "reminder", "set a reminder to",
                 "set reminder to", "after", "in"]:
@@ -131,15 +110,8 @@ def command_set_reminder(command: str) -> None:
         reminder_text = "your reminder"
 
     if minutes <= 0:
-        talk("In how many minutes should I remind you?")
-        response = accept_command_text()
-        if response:
-            m = re.search(r"(\d+)", response)
-            if m:
-                minutes = int(m.group(1))
-        if minutes <= 0:
-            talk("Sorry, I couldn't set the reminder.")
-            return
+        talk("Please specify in how many minutes I should remind you. For example, say: set a reminder for 5 minutes to check the oven.")
+        return
 
     talk(f"I'll remind you in {minutes} minute{'s' if minutes != 1 else ''} to {reminder_text}.")
     logger.info("Reminder set: %d min → %s", minutes, reminder_text)
@@ -151,8 +123,6 @@ def command_set_reminder(command: str) -> None:
     t = threading.Thread(target=_reminder, daemon=True, name=f"Reminder-{reminder_text[:20]}")
     t.start()
     active_reminders.append(t)
-
-
 
 def command_set_alarm(command: str) -> None:
     from core.voice import talk
@@ -195,10 +165,8 @@ def command_set_alarm(command: str) -> None:
     t.start()
     active_alarms.append(t)
 
-
-
 def command_todo(command: str) -> None:
-    from core.voice import talk, accept_command_text
+    from core.voice import talk
     from core.db import get_todos, add_todo, complete_todo, clear_todos
 
     try:
@@ -209,10 +177,8 @@ def command_todo(command: str) -> None:
                 task = task.replace(kw, "")
             task = task.strip()
             if not task:
-                talk("What should I add to your list?")
-                task = accept_command_text()
-                if not task:
-                    return
+                talk("Please specify what to add to your to-do list. For example, say: add buy milk to my list.")
+                return
             add_todo(task)
             talk(f"Added '{task}' to your to-do list.")
 
@@ -238,15 +204,12 @@ def command_todo(command: str) -> None:
                 talk(f"Marked as done.")
             else:
                 talk("I couldn't find that task on your list.")
-
         else:
             talk("Say 'add to my list', 'read my list', 'mark done', or 'clear list'.")
 
     except Exception as exc:
         logger.error("Todo command error: %s", exc)
         talk("Sorry, I couldn't access your to-do list right now.")
-
-
 
 CURRENCY_MAP = {
     "dollar": "USD", "dollars": "USD", "usd": "USD",
@@ -257,7 +220,6 @@ CURRENCY_MAP = {
     "dirham": "AED", "dirhams": "AED", "aed": "AED",
     "franc": "CHF", "francs": "CHF", "chf": "CHF",
 }
-
 
 def command_convert_currency(command: str) -> None:
     from core.voice import talk
@@ -287,7 +249,6 @@ def command_convert_currency(command: str) -> None:
     to_curr = to_curr or "INR"
 
     try:
-        # Try cached rate first
         from core.db import cache_get, cache_set
         cache_key = f"fx_{from_curr}_{to_curr}"
         rate = cache_get(cache_key)
@@ -296,7 +257,7 @@ def command_convert_currency(command: str) -> None:
             data = requests.get(f"https://api.exchangerate-api.com/v4/latest/{from_curr}", timeout=10).json()
             rate = data["rates"].get(to_curr)
             if rate:
-                cache_set(cache_key, rate, ttl_seconds=3600)  # cache 1 hour
+                cache_set(cache_key, rate, ttl_seconds=3600)
 
         if rate:
             result = round(amount * rate, 2)

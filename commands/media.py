@@ -5,10 +5,8 @@ from core.voice import talk, accept_command_text
 def command_play_music(command):
     song = command.replace("play", "").strip()
     if not song:
-        talk("What would you like me to play?")
-        song = accept_command_text()
-        if not song:
-            return
+        talk("Please specify what you would like me to play. For example, say: play jazz music.")
+        return
     talk(f"Playing {song}")
     pywhatkit.playonyt(song)
 

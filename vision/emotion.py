@@ -16,6 +16,10 @@ def detect_emotion(talk):
         return
 
     talk("Let me take a look at you.")
+    
+    for _ in range(20):
+        cap.read()
+        
     best_face = None
     best_area = 0
 

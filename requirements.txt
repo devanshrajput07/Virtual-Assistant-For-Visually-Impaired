@@ -33,7 +33,6 @@ pyngrok
 
 #  Database 
 pymongo[srv]>=4.6       # MongoDB Atlas (SRV connection string support)
-bson                    # BSON binary for face encodings
 
 #  Vision / Neural Networks 
 torch>=2.0

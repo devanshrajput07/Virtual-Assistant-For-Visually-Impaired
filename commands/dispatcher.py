@@ -1,31 +1,19 @@
-"""
-commands/dispatcher.py
-Central command router for AURA.
-Refactored from 282-line if-elif chain → registry + priority matching.
-"""
-
 import logging
 import traceback
 from typing import Callable
-
 from core.voice import talk, accept_command_text
 from core.ai_chat import chat_with_groq
 from config.settings import SMALL_TALK, WEBSITE_MAP, APP_MAP
 
 logger = logging.getLogger("aura.dispatcher")
 
-
-
 def _vision(module: str, func: str) -> Callable | None:
-    """Dynamically import a vision function. Returns None if unavailable."""
     try:
         mod = __import__(f"vision.{module}", fromlist=[func])
         return getattr(mod, func)
     except (ImportError, AttributeError) as exc:
         logger.debug("Vision module %s.%s unavailable: %s", module, func, exc)
         return None
-
-
 
 HELP_CATEGORIES = {
     "vision": "Vision: say detect objects, describe surroundings, read text, navigate, how do I look, who is in front, read document, or how far.",
@@ -37,26 +25,15 @@ HELP_CATEGORIES = {
     "fun": "Fun: say joke, quote, flip a coin, roll a dice, spell a word, or convert currency.",
 }
 
-
 def command_help(command: str = "") -> None:
     command = command.lower()
     for cat, text in HELP_CATEGORIES.items():
         if cat in command and "help" in command:
             talk(text)
             return
-    talk("I can help with vision, media, productivity, information, communication, system, and fun commands. Which category would you like to hear about?")
-    choice = accept_command_text()
-    if choice:
-        for cat, text in HELP_CATEGORIES.items():
-            if cat in choice.lower():
-                talk(text)
-                return
-    talk("You can say something like 'help vision' at any time.")
+    talk("I can help with vision, media, productivity, information, communication, system, and fun commands. Say 'help' followed by the category name, like 'help vision'.")
 
-
-
-def process_command(command: str, gps_lat: float = None, gps_lon: float = None) -> None:  # noqa: C901 (complex but intentional)
-    """Process string command using priority matching instead of huge if-else chain."""
+def process_command(command: str, gps_lat: float = None, gps_lon: float = None) -> None:
     command = command.lower().strip()
     logger.info("Processing command: '%s'", command)
 
@@ -82,7 +59,7 @@ def process_command(command: str, gps_lat: float = None, gps_lon: float = None) 
 
         elif "emergency" in command or "sos" in command or "help me" in command:
             from commands.communication import command_emergency_sos
-            command_emergency_sos()
+            command_emergency_sos(gps_lat=gps_lat, gps_lon=gps_lon)
 
         elif any(k in command for k in ["how do i look", "how am i looking", "my emotion", "my mood", "my face", "emotion"]):
             fn = _vision("emotion", "detect_emotion")
@@ -105,31 +82,16 @@ def process_command(command: str, gps_lat: float = None, gps_lon: float = None) 
                 name = name.replace(kw, "")
             name = name.strip().title()
             if not name:
-                talk("What name should I save this face as?")
-                name = accept_command_text()
-                if not name:
-                    return
-                name = name.strip().title()
+                talk("Please specify the name. For example, say: remember this face as John.")
+                return
             fn = _vision("face_recognition_module", "register_face")
             if fn:
                 fn(talk, name)
 
         elif any(k in command for k in ["read document", "read book", "read page", "document mode", "reader mode"]):
-            import speech_recognition as sr
-            from core.voice import listener
-
-            def _listen_cmd():
-                try:
-                    with sr.Microphone() as src:
-                        listener.adjust_for_ambient_noise(src)
-                        voice = listener.listen(src, timeout=8, phrase_time_limit=5)
-                        return listener.recognize_google(voice).lower()
-                except Exception:
-                    return None
-
             fn = _vision("document_reader", "read_document_mode")
             if fn:
-                fn(talk, _listen_cmd)
+                fn(talk)
 
         elif any(k in command for k in ["describe", "what do you see", "surroundings", "what's around", "look around"]):
             fn = _vision("scene_description", "describe_scene")
@@ -144,29 +106,9 @@ def process_command(command: str, gps_lat: float = None, gps_lon: float = None) 
                 fn(talk)
 
         elif any(k in command for k in ["navigate", "guide me", "guide", "walk me"]):
-            import speech_recognition as sr
-            from core.voice import listener
-
-            stop_event = {"flag": False}
-
-            def _listen_for_stop() -> bool:
-                if stop_event["flag"]:
-                    return True
-                try:
-                    with sr.Microphone() as src:
-                        listener.adjust_for_ambient_noise(src, duration=0.1)
-                        voice = listener.listen(src, timeout=0.8, phrase_time_limit=2)
-                        txt = listener.recognize_google(voice).lower()
-                        if any(w in txt for w in ["stop", "exit", "quit", "end"]):
-                            stop_event["flag"] = True
-                            return True
-                except Exception:
-                    pass
-                return False
-
             fn = _vision("navigation", "continuous_navigation")
             if fn:
-                fn(talk, _listen_for_stop)
+                fn(talk)
             else:
                 talk("Navigation module is not available right now.")
 
@@ -196,7 +138,7 @@ def process_command(command: str, gps_lat: float = None, gps_lon: float = None) 
 
         elif "briefing" in command or ("good morning" in command and "brief" in command):
             from commands.information import command_daily_briefing
-            command_daily_briefing()
+            command_daily_briefing(gps_lat=gps_lat, gps_lon=gps_lon)
 
         elif any(k in command for k in ["feeling", "mood", "something relaxing", "something energetic",
                                          "something happy", "something sad", "chill music", "focus music",
@@ -263,7 +205,7 @@ def process_command(command: str, gps_lat: float = None, gps_lon: float = None) 
             from commands.productivity import command_todo
             command_todo(command)
 
-        elif any(k in command for k in ["who is", "tell me about"]):
+        elif any(k in command for k in ["who is", "what is", "tell me about", "wikipedia", "search for", "search on wikipedia"]):
             from commands.information import command_search_wikipedia
             command_search_wikipedia(command)
 

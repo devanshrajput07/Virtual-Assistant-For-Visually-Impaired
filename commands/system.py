@@ -57,15 +57,21 @@ def command_battery_status():
         percent = battery.percent
         plugged = "plugged in" if battery.power_plugged else "not plugged in"
         secs_left = battery.secsleft
-        
-        if secs_left == psutil.POWER_TIME_UNLIMITED: time_left = "charging"
-        elif secs_left == psutil.POWER_TIME_UNKNOWN: time_left = "unknown time remaining"
+
+        if battery.power_plugged or secs_left == psutil.POWER_TIME_UNLIMITED:
+            time_suffix = ", and it is charging."
+        elif secs_left == psutil.POWER_TIME_UNKNOWN or secs_left < 0 or secs_left > 86400:
+            # Windows can't report remaining time accurately — just skip it
+            time_suffix = "."
         else:
             hours = secs_left // 3600
             mins = (secs_left % 3600) // 60
-            time_left = f"{hours} hours and {mins} minutes remaining"
-            
-        talk(f"Battery is at {percent} percent, {plugged}. {time_left}.")
+            if hours > 0:
+                time_suffix = f", with approximately {hours} hours and {mins} minutes remaining."
+            else:
+                time_suffix = f", with approximately {mins} minutes remaining."
+
+        talk(f"Battery is at {round(percent)} percent, {plugged}{time_suffix}")
     except Exception as e:
         talk(f"Sorry, I couldn't check the battery. {e}")
 
@@ -128,9 +134,8 @@ def command_google_search(command):
         query = query.replace(keyword, "")
     query = query.strip()
     if not query:
-        talk("What should I search for?")
-        query = accept_command_text()
-        if not query: return
+        talk("Please specify what you want to search for. For example, say: search for weather in London.")
+        return
     talk(f"Searching for {query}.")
     webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote(query)}")
 
@@ -141,9 +146,8 @@ def command_find_file(command):
     filename = filename.strip()
     
     if not filename:
-        talk("What file should I search for?")
-        filename = accept_command_text()
-        if not filename: return
+        talk("Please specify the file you want to find. For example, say: find file document.")
+        return
     
     talk(f"Searching for {filename}. This may take a moment.")
     search_dirs = [

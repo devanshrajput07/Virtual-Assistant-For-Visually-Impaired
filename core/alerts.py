@@ -1,14 +1,3 @@
-"""
-core/alerts.py
-Proactive monitor for battery & medication reminders.
-All alert data stored in MongoDB Atlas.
-
-Fixes:
-  - Replaced bare except: with proper Exception handling + logging
-  - Battery warn cooldown now tracked correctly
-  - Medication alert uses MongoDB instead of JSON file
-"""
-
 import threading
 import time
 import datetime
@@ -16,9 +5,7 @@ import logging
 
 logger = logging.getLogger("aura.alerts")
 
-
 def add_medication_reminder(talk_fn, med_name: str, times: list[str]) -> None:
-    """Save a medication reminder to MongoDB and confirm via voice."""
     try:
         from core.db import add_alert
         add_alert("medication", {"name": med_name, "times": times})
@@ -29,20 +16,11 @@ def add_medication_reminder(talk_fn, med_name: str, times: list[str]) -> None:
         logger.error("Failed to save medication reminder: %s", exc)
         talk_fn("Sorry, I couldn't save the medication reminder.")
 
-
 def trigger_emergency_alert(talk_fn) -> None:
-    """Immediately fire the emergency SOS alert."""
     logger.warning("EMERGENCY ALERT TRIGGERED")
     talk_fn("Emergency alert activated! Sending SOS now.")
 
-
 def start_proactive_monitor(talk_fn) -> threading.Thread:
-    """
-    Daemon thread that periodically checks:
-      1. Battery level → warn if low
-      2. Medication reminders → announce at scheduled times
-    """
-
     def monitor_loop():
         last_battery_warn: float = 0.0
         last_med_check: str = ""
@@ -64,7 +42,7 @@ def start_proactive_monitor(talk_fn) -> threading.Thread:
                         talk_fn(f"Heads up — your battery is at {int(pct)} percent.")
                         last_battery_warn = now_ts
             except ImportError:
-                pass  # psutil not installed
+                pass
             except Exception as exc:
                 logger.debug("Battery check error: %s", exc)
 
@@ -88,18 +66,17 @@ def start_proactive_monitor(talk_fn) -> threading.Thread:
                         med_name = data.get("name", "")
                         for t in data.get("times", []):
                             try:
-                                # Normalise 12h → 24h for comparison
                                 med_time_obj = datetime.datetime.strptime(t, "%I:%M %p")
                                 med_time = med_time_obj.strftime("%H:%M")
                             except ValueError:
-                                med_time = t  # assume already HH:MM
+                                med_time = t
                             if med_time == current_time:
                                 talk_fn(f"Medication reminder: it's time to take your {med_name}.")
                                 logger.info("Medication reminder fired: %s", med_name)
             except Exception as exc:
                 logger.warning("Medication monitor error: %s", exc)
 
-            time.sleep(30)  # check every 30 s
+            time.sleep(30)
 
     t = threading.Thread(target=monitor_loop, daemon=True, name="ProactiveMonitor")
     t.start()

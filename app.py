@@ -1,30 +1,13 @@
-"""
-app.py
-AURA Flask Application — Production-Ready
-
-Improvements:
-  - Logging initialised at startup
-  - Security headers via flask-talisman (CSP, HSTS)
-  - Rate limiting via flask-limiter
-  - Fixed reset() lock handling
-  - New endpoints: /status, /history, /contacts (GET/POST/DELETE)
-  - debug=False in production (use --debug flag explicitly)
-  - Proactive monitor started on first request
-"""
-
 import sys
 import threading
 import logging
-
 from flask import Flask, render_template, jsonify, request, abort
-
 from config.logging_config import setup_logging
 from config.settings import LOG_LEVEL
 
 setup_logging(LOG_LEVEL)
 logger = logging.getLogger("aura.app")
 
-import main
 from core.voice import get_web_updates, talk
 
 app = Flask(__name__)
@@ -47,8 +30,8 @@ try:
     from flask_talisman import Talisman
     Talisman(
         app,
-        content_security_policy=False,   # disabled for local WebSpeech API support
-        force_https=False,                # local dev; enable in production
+        content_security_policy=False,
+        force_https=False,
         strict_transport_security=False,
     )
     logger.info("Talisman security headers enabled.")
@@ -58,10 +41,8 @@ except ImportError:
 _aura_lock = threading.Lock()
 _monitor_started = False
 
-
 @app.before_request
 def _ensure_monitor():
-    """Start proactive monitor once on first request."""
     global _monitor_started
     if not _monitor_started:
         _monitor_started = True
@@ -71,17 +52,12 @@ def _ensure_monitor():
         except Exception as exc:
             logger.warning("Could not start proactive monitor: %s", exc)
 
-
-# ROUTES
-
 @app.route("/")
 def index():
     return render_template("index.html")
 
-
 @app.route("/status")
 def status():
-    """Health check endpoint."""
     from core.db import ping as db_ping
     db_ok = db_ping()
     return jsonify({
@@ -90,30 +66,77 @@ def status():
         "lock_held": _aura_lock.locked(),
     })
 
-
 @app.route("/updates", methods=["GET"])
 def updates():
-    """Poll for pending speech updates from the backend."""
     msgs = get_web_updates()
     return jsonify({"messages": msgs})
 
+def _process_and_capture(command: str, lat=None, lon=None) -> str:
+    import core.voice as _voice_mod
+    import commands.dispatcher as _disp_mod
+    import commands.communication as _comm_mod
+    import commands.information as _info_mod
+    import commands.system as _sys_mod
+    import commands.productivity as _prod_mod
+    import commands.fun as _fun_mod
+    responses: list[str] = []
+    _orig_talk = _voice_mod.talk
+
+    def _capture_talk(text):
+        responses.append(text)
+        _voice_mod._web_message_queue.append(text)
+
+    for _mod in (_voice_mod, _disp_mod, _comm_mod, _info_mod, _sys_mod, _prod_mod, _fun_mod):
+        try:
+            _mod.talk = _capture_talk
+        except AttributeError:
+            pass
+    _voice_mod.set_talk_handler(_capture_talk)
+
+    try:
+        from commands.dispatcher import process_command
+        process_command(command, gps_lat=lat, gps_lon=lon)
+    except Exception as exc:
+        logger.error("Command processing error for '%s': %s", command, exc)
+    finally:
+        for _mod in (_voice_mod, _disp_mod, _comm_mod, _info_mod, _sys_mod, _prod_mod, _fun_mod):
+            try:
+                _mod.talk = _orig_talk
+            except AttributeError:
+                pass
+        _voice_mod.set_talk_handler(None)
+
+    return " ".join(dict.fromkeys(responses)).strip() or "Done."
 
 @app.route("/listen", methods=["POST"])
 def listen():
-    """Record one voice command via microphone and process it."""
     acquired = _aura_lock.acquire(timeout=5.0)
     if not acquired:
         logger.warning("Lock busy — rejected /listen request.")
         return jsonify({"status": "error", "message": "AURA is busy. Please wait a moment."}), 429
 
     try:
-        result = main.handle_single_command()
+        from core.voice import accept_command
+        command = accept_command()
+        if not command:
+            return jsonify({
+                "status": "error",
+                "message": "I didn't catch that. Please try again."
+            }), 400
+
+        data = request.get_json(force=True, silent=True) or {}
+        lat = data.get("lat")
+        lon = data.get("lon")
+
+        combined = _process_and_capture(command, lat, lon)
+        logger.info("/listen '%s' -> '%s'", command, combined[:80])
         return jsonify({
             "status": "success",
-            "command": result.get("command"),
-            "lang_code": result.get("lang_code", "en-US"),
-            "response": result.get("response", ""),
+            "command": command,
+            "response": "Command processed.",
+            "lang_code": "en-US",
         })
+
     except Exception as exc:
         import traceback
         logger.error("listen() error: %s\n%s", exc, traceback.format_exc())
@@ -122,14 +145,8 @@ def listen():
         if _aura_lock.locked():
             _aura_lock.release()
 
-
 @app.route("/command", methods=["POST"])
 def text_command():
-    """
-    Process a text command directly — NO microphone required.
-    Body: {"command": "what time is it"}
-    Used by Quick Command chips and keyboard input.
-    """
     data = request.get_json(force=True, silent=True) or {}
     command = data.get("command", "").strip()
     if not command:
@@ -138,48 +155,17 @@ def text_command():
     lat = data.get("lat")
     lon = data.get("lon")
 
-    import core.voice as _voice_mod
-    import commands.dispatcher as _disp_mod
-    import commands.communication as _comm_mod
-    responses: list[str] = []
-    _orig_talk = _voice_mod.talk
-    _orig_comm_talk = getattr(_comm_mod, "talk", None)
-
-    def _capture_talk(text):
-        responses.append(text)
-        _voice_mod._web_message_queue.append(text)
-
-    _voice_mod.talk = _capture_talk
-    _disp_mod.talk = _capture_talk
-    if _orig_comm_talk:
-        _comm_mod.talk = _capture_talk
-    _voice_mod.set_talk_handler(_capture_talk)
-
-    try:
-        from commands.dispatcher import process_command
-        process_command(command, gps_lat=lat, gps_lon=lon)
-    except Exception as exc:
-        logger.error("/command error for '%s': %s", command, exc)
-    finally:
-        _voice_mod.talk = _orig_talk
-        _voice_mod.set_talk_handler(None)
-
-    combined = " ".join(dict.fromkeys(responses)).strip() or "Done."
+    combined = _process_and_capture(command, lat, lon)
     logger.info("/command '%s' -> '%s'", command, combined[:80])
     return jsonify({
         "status": "success",
         "command": command,
-        "response": combined,
+        "response": "Command processed.",
         "lang_code": "en-US",
     })
 
-
 @app.route("/sos", methods=["POST"])
 def sos():
-    """
-    Trigger Emergency SOS directly — NO microphone required.
-    Sends WhatsApp message to the flagged emergency contact (Ashwin).
-    """
     data = request.get_json(force=True, silent=True) or {}
     lat = data.get("lat")
     lon = data.get("lon")
@@ -213,21 +199,17 @@ def sos():
     logger.warning("/sos activated -> %s", combined[:100])
     return jsonify({"status": "ok", "response": combined})
 
-
 @app.route("/reset", methods=["POST"])
 def reset():
-    """Manually clear the lock state if it gets stuck."""
     released = False
     try:
         if _aura_lock.locked():
             _aura_lock.release()
             released = True
     except RuntimeError:
-        pass  # wasn't locked by this thread
+        pass
     logger.info("Reset called — released: %s", released)
     return jsonify({"status": "success", "message": "Assistant state has been reset."})
-
-
 
 @app.route("/contacts", methods=["GET"])
 def get_contacts():
@@ -236,7 +218,6 @@ def get_contacts():
         return jsonify({"status": "ok", "contacts": get_all_contacts()})
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
-
 
 @app.route("/contacts", methods=["POST"])
 def add_contact():
@@ -252,7 +233,6 @@ def add_contact():
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
 
-
 @app.route("/contacts/<name>", methods=["DELETE"])
 def remove_contact(name: str):
     try:
@@ -264,8 +244,6 @@ def remove_contact(name: str):
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
 
-
-
 @app.route("/history", methods=["GET"])
 def history():
     try:
@@ -273,7 +251,6 @@ def history():
         return jsonify({"status": "ok", "history": get_conversation_history()})
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
-
 
 @app.route("/history", methods=["DELETE"])
 def clear_history():
@@ -283,9 +260,6 @@ def clear_history():
         return jsonify({"status": "ok", "message": "Conversation cleared."})
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
-
-
-# ENTRY POINT
 
 if __name__ == "__main__":
     port = int(next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--port"), 5000))

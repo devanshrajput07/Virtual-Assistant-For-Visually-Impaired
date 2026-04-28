@@ -1,12 +1,3 @@
-"""
-vision/object_detection.py
-YOLO-based object detection with:
-  - Lazy-loaded singleton model (no import-time crash)
-  - MiDaS depth integration for distance announcements
-  - Fixed frame-failure handling
-  - Configurable confidence threshold
-"""
-
 import cv2
 import logging
 import time
@@ -19,9 +10,7 @@ YOLO_MODEL_PATH = "models/yolov8s.pt"
 CONFIDENCE_THRESHOLD = 0.50
 MAX_CONSECUTIVE_FAILURES = 10
 
-
 def get_yolo_model():
-    """Lazy-load and cache the YOLO model."""
     global _yolo_model
     if _yolo_model is None:
         try:
@@ -34,13 +23,7 @@ def get_yolo_model():
             raise RuntimeError(f"YOLO model unavailable: {exc}") from exc
     return _yolo_model
 
-
-
 def _depth_to_label(avg_depth: float) -> str:
-    """
-    MiDaS returns inverse relative depth (higher value = closer).
-    Buckets derived from empirical testing.
-    """
     if avg_depth > 0.75:
         return "very close"
     elif avg_depth > 0.50:
@@ -50,9 +33,7 @@ def _depth_to_label(avg_depth: float) -> str:
     else:
         return "far away"
 
-
 def _try_get_depth(frame, x1: int, y1: int, x2: int, y2: int) -> Optional[str]:
-    """Best-effort depth estimation — returns human label or None."""
     try:
         from vision.depth_estimation import estimate_object_distance
         boxes = [(x1, y1, x2, y2, "obj")]
@@ -64,18 +45,7 @@ def _try_get_depth(frame, x1: int, y1: int, x2: int, y2: int) -> Optional[str]:
         logger.debug("Depth estimation skipped: %s", exc)
     return None
 
-
-
 def detect_objects_from_camera(talk_fn, target: Optional[str] = None, max_frames: int = 30, show_view: bool = False) -> None:
-    """
-    Scan the camera for up to `max_frames` and announce detected objects.
-
-    Args:
-        talk_fn:    Voice output function.
-        target:     Optional specific object to locate (e.g. "phone").
-        max_frames: Number of frames to analyse before summarising.
-        show_view:  Whether to display an OpenCV window (desktop only).
-    """
     model = get_yolo_model()
 
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -85,7 +55,11 @@ def detect_objects_from_camera(talk_fn, target: Optional[str] = None, max_frames
         return
 
     talk_fn("Scanning the area, please wait.")
-    detected_objects: list[tuple[str, str, str]] = []  # (name, direction, distance_label)
+    
+    for _ in range(20):
+        cap.read()
+        
+    detected_objects: list[tuple[str, str, str]] = []
     frame_count = 0
     consecutive_failures = 0
 
@@ -148,13 +122,14 @@ def detect_objects_from_camera(talk_fn, target: Optional[str] = None, max_frames
         talk_fn("I couldn't detect any objects clearly. Please make sure the camera has a clear view.")
         return
 
-    # Count most common direction per object
     summary: dict[str, list[tuple[str, str]]] = {}
     for obj, direction, dist in detected_objects:
         summary.setdefault(obj, []).append((direction, dist))
 
     stable: dict[str, tuple[str, str]] = {}
     for obj, entries in summary.items():
+        if len(entries) < 5:
+            continue
         best_dir = max(set(e[0] for e in entries), key=lambda d: sum(1 for e in entries if e[0] == d))
         dist_labels = [e[1] for e in entries if e[1]]
         best_dist = max(set(dist_labels), key=dist_labels.count) if dist_labels else ""
@@ -172,7 +147,8 @@ def detect_objects_from_camera(talk_fn, target: Optional[str] = None, max_frames
         parts = []
         for obj, (direction, dist) in stable.items():
             distance_info = f", {dist}" if dist else ""
-            parts.append(f"{obj} on the {direction}{distance_info}")
+            loc = f"on the {direction}" if "ahead" not in direction else direction
+            parts.append(f"{obj} {loc}{distance_info}")
         sentence = "; ".join(parts)
         talk_fn(f"I can see: {sentence}.")
         logger.info("Detection complete: %s", sentence)

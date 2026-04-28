@@ -19,6 +19,10 @@ def describe_scene(talk):
         return
 
     talk("Scanning your surroundings, please wait.")
+    
+    for _ in range(20):
+        cap.read()
+        
     ret, frame = cap.read()
     cap.release()
 
@@ -57,14 +61,13 @@ def describe_scene(talk):
         return
 
     detections_text = ", ".join([f"{obj} on the {dir}" for obj, dir in zip(detected_objects, directions)])
-
     prompt = f"Describe this scene naturally: I detected {detections_text}."
 
     try:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant for the visually impaired, describing what the camera sees."},
+                {"role": "system", "content": "You are an assistant for the visually impaired. Describe the detected objects naturally in 1-2 sentences. DO NOT invent distances, speeds, or motion. Only state what is present based on the provided list."},
                 {"role": "user", "content": prompt},
             ],
         )

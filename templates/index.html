@@ -35,11 +35,7 @@
         </div>
         <p class="tagline">Intelligent Voice Assistant · Visually Impaired Navigation</p>
 
-        <!-- DB Status badge -->
-        <div class="db-badge" id="db-badge" aria-live="polite" aria-label="Database connection status">
-          <span class="db-dot" id="db-dot"></span>
-          <span id="db-label">Checking…</span>
-        </div>
+
       </div>
 
     </header>
@@ -132,20 +128,7 @@
           🚨 EMERGENCY SOS
         </button>
 
-        <!-- Quick Commands -->
-        <div class="quick-commands" role="group" aria-label="Quick voice commands">
-          <p class="quick-label" aria-hidden="true">Quick Commands</p>
-          <div class="chips">
-            <button class="chip" data-cmd="detect objects" aria-label="Detect objects around me">👁 Detect Objects</button>
-            <button class="chip" data-cmd="navigate" aria-label="Start navigation mode">🧭 Navigate</button>
-            <button class="chip" data-cmd="weather" aria-label="Get current weather">🌤 Weather</button>
-            <button class="chip" data-cmd="what time is it" aria-label="Get current time">🕐 Time</button>
-            <button class="chip" data-cmd="how far" aria-label="Estimate distance to nearest object">📏 Distance</button>
-            <button class="chip" data-cmd="daily briefing" aria-label="Get your daily briefing">📋 Briefing</button>
-            <button class="chip" data-cmd="tell me a joke" aria-label="Tell me a joke">😄 Joke</button>
-            <button class="chip" data-cmd="battery status" aria-label="Check battery level">🔋 Battery</button>
-          </div>
-        </div>
+
 
       </div><!-- /left-panel -->
 
@@ -170,6 +153,20 @@
             Your personal voice assistant — designed for accessibility.<br />
             Say <strong>"Hey AURA"</strong> or tap me to start.<br />
             <span class="welcome-hint">I can see, listen, and help you navigate the world.</span>
+          </div>
+        </div>
+
+        <!-- Quick Commands (Moved to right) -->
+        <div class="quick-commands" role="group" aria-label="Quick voice commands">
+          <div class="chips">
+            <button class="chip" data-cmd="detect objects" aria-label="Detect objects around me">👁 Detect Objects</button>
+            <button class="chip" data-cmd="navigate" aria-label="Start navigation mode">🧭 Navigate</button>
+            <button class="chip" data-cmd="weather" aria-label="Get current weather">🌤 Weather</button>
+            <button class="chip" data-cmd="what time is it" aria-label="Get current time">🕐 Time</button>
+            <button class="chip" data-cmd="read text" aria-label="Read text in front of me">📖 Read Text</button>
+            <button class="chip" data-cmd="analyze emotion" aria-label="Detect emotions of person in front">🎭 Emotion</button>
+            <button class="chip" data-cmd="daily briefing" aria-label="Get your daily briefing">📋 Briefing</button>
+            <button class="chip" data-cmd="battery status" aria-label="Check battery level">🔋 Battery</button>
           </div>
         </div>
       </div><!-- /right-panel -->

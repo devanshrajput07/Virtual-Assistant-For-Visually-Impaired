@@ -42,6 +42,10 @@ def register_face(talk, name):
         return
 
     talk(f"Please look at the camera. I'll remember your face as {name}.")
+    
+    for _ in range(20):
+        cap.read()
+        
     best_face = None
     best_area = 0
 
@@ -93,6 +97,10 @@ def recognize_face(talk):
         return
 
     talk("Looking at who's in front of you.")
+    
+    for _ in range(20):
+        cap.read()
+        
     best_face = None
     best_area = 0
 
