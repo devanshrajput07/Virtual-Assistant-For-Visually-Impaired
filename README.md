@@ -1,43 +1,54 @@
 # AURA — A Voice-Controlled AI Assistant for Visually Impaired Navigation
 
+[![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Framework-Flask-lightgrey?logo=flask)](https://flask.palletsprojects.com/)
+[![MongoDB](https://img.shields.io/badge/Database-MongoDB%20Atlas-green?logo=mongodb)](https://www.mongodb.com/atlas)
+[![AI](https://img.shields.io/badge/AI-Llama%203%20(Groq)-orange)](https://groq.com/)
+
 ---
 
-**AURA** (Visual Assistant for Visually Impaired) is an advanced, fully voice-operated personal assistant designed to bridge the gap between complex digital interactions and voice-first accessibility. By integrating computer vision, natural language processing, and an intuitive web interface, VAVI acts as both a digital companion and a navigational aid.
+**AURA** (Visual Assistant for Visually Impaired) is a state-of-the-art, fully voice-operated personal assistant designed to bridge the gap between complex digital interactions and voice-first accessibility. By integrating advanced computer vision, real-time spatial analysis, and high-performance LLMs, AURA acts as both a digital companion and a navigational aid for the visually impaired.
 
-With over **50+ intelligent commands**, AURA can browse the web, send WhatsApp messages, recognize objects and faces, detect emotions, read text from documents, and even act as a navigational guide—all entirely hands-free.
+With over **50+ intelligent commands**, AURA can browse the web, send WhatsApp messages, recognize objects and faces, detect emotions, and read documents—all entirely hands-free.
 
 ---
 
-## ✨ Features
+## 🛠️ Technology Stack
 
-AURA provides a robust suite of voice-activated features:
+- **Core Engine:** Python 3.9+ & Flask (Web Interface)
+- **Intelligence:** Groq Llama 3.1 (High-speed Conversational AI)
+- **Computer Vision:** OpenCV & YOLOv8 (Object Detection & Spatial Awareness)
+- **Automation:** PyAutoGUI & Win32GUI (Desktop UI interaction for WhatsApp Calling)
+- **Database:** MongoDB Atlas (Cloud-synced profiles, contacts, and face data)
+- **Speech:** Google Speech-to-Text & Edge-TTS (Natural voice synthesis)
+- **OCR:** Tesseract OCR (Document & Text Reading)
+
+---
+
+## ✨ Key Features
 
 ### 👁️‍🗨️ Vision & Accessibility
-- **Scene Description & Navigation:** *"Describe my surroundings"* or *"Guide me"* — Real-time obstacle warnings and scene analysis using YOLOv8.
-- **Face Recognition:** *"Remember this face as Mom"* / *"Who is in front of me?"* — Learns and recognizes family members.
-- **Emotion Detection:** *"How do I look?"* — Analyzes your facial expression and responds empathetically.
-- **Document Reader Mode:** *"Read document"* — Continuous OCR reading with voice controls (*"next page"*, *"repeat"*).
-- **Object Detection & Depth:** *"Find my keys"* / *"How far is the chair?"* — Locates objects and estimates proximity.
+- **Real-time Face Recognition:** *"Who is in front of me?"* — Uses MongoDB to learn and recognize people across devices.
+- **Scene Description:** *"Describe my surroundings"* — Comprehensive scene analysis and obstacle detection.
+- **Document Reader Mode:** *"Read document"* — Intelligent OCR with voice-controlled navigation (*repeat, next page*).
+- **Emotion Analysis:** *"How do I look?"* — Empathetic feedback based on facial expression analysis.
+- **Spatial Awareness:** *"How far is the chair?"* — Depth estimation and object proximity alerts.
 
-### 🧠 Conversational AI
-- **Context-Aware:** Powered by **Groq Llama 3**, AURA remembers previous turns in a conversation.
-- **Deep Help System:** Interactive voice guide categories all 50+ commands.
-- **Multi-Lingual:** Direct translation and definition support for global accessibility.
+### 🧠 Conversational Intelligence
+- **Contextual Memory:** Remembers previous interactions for a natural conversation flow.
+- **Deep Help System:** Interactive voice guide for all system commands.
+- **Global Knowledge:** Instant definitions, translations, and Wikipedia searches.
 
-### 🚀 Productivity & Lifestyle
-- **Mood-Based Music:** *"Play something relaxing"* or *"I need workout music"* — Automatically curates YouTube playlists.
-- **Proactive Alerts:** Runs in the background to automatically warn you about low battery and scheduled medication reminders.
-- **Daily Briefing & News:** Summarizes your day, local weather, and top headlines.
-- **Utilities:** Alarms, timers, math, currency conversion, file finding, and to-do lists.
-
-### 📱 System & Communication
-- **Emergency SOS:** *"Emergency"* — Instantly WhatsApps your live location to a designated emergency contact.
-- **Speed Dial & Messaging:** Call or message saved contacts via WhatsApp via voice.
-- **System Controls:** Adjust brightness/volume, take screenshots, check battery, and open apps.
+### 🚀 Productivity & Communication
+- **WhatsApp Voice & Video Calling:** *"Make a video call to Ashwin"* — Fully automated hands-free calling using coordinate-based desktop interaction.
+- **Emergency SOS:** *"Help me"* — Instantly sends live location and emergency alerts via WhatsApp.
+- **Proactive Alerts:** Automatic background monitoring for low battery and medication reminders.
+- **Daily Briefing:** Summarized weather, news, and daily agenda upon wake-up.
+- **Lifestyle Utilities:** Voice-controlled Alarms, Timers, Math, and Currency Conversion.
 
 ---
 
-## 🛠️ Installation & Setup
+## ⚙️ Installation & Setup
 
 1. **Clone the Repository**
    ```bash
@@ -45,34 +56,33 @@ AURA provides a robust suite of voice-activated features:
    cd Virtual-Assistant-For-Visually-Impaired
    ```
 
-2. **Create a Virtual Environment**
+2. **Environment Setup**
    ```bash
    python -m venv venv
    # On Windows:
    venv\Scripts\activate
    # On Mac/Linux:
    source venv/bin/activate
-   ```
-
-3. **Install Dependencies**
-   ```bash
+   
    pip install -r requirements.txt
    ```
-   *Note: For Document Reader functionality, ensure [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) is installed on your system.*
+   *Note: Ensure [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) is installed for Document Reader features.*
 
-4. **Environment Variables**
-   Create a `.env` file in the root directory and add your API keys:
+3. **Configuration**
+   Create a `.env` file in the root directory:
    ```env
-   GROQ_API_KEY=your_groq_api_key
-   NEWS_API_KEY=your_newsapi_org_key
+   GROQ_API_KEY=your_groq_key
+   NEWS_API_KEY=your_news_key
+   MONGODB_URI=your_mongodb_atlas_uri
+   DB_NAME=db_name
+   LOG_LEVEL=INFO
    ```
 
 ---
 
-## 🚀 Usage
+## 🚀 Execution
 
-**Run the Web UI Mode (Recommended)**
-This launches a beautiful, accessible web interface with the "Hey AURA" wake word support.
+Launch the AURA ecosystem with the beautiful spatial web interface:
 
 ```bash
 python app.py

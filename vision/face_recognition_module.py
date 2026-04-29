@@ -1,32 +1,15 @@
 import cv2
-import json
 import os
 import numpy as np
+from core.db import save_face, get_all_faces
 
 FACES_DIR = "data/faces"
-FACES_DB = "data/faces.json"
 
 HAAR_CASCADE = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 face_cascade = cv2.CascadeClassifier(HAAR_CASCADE)
 
 def ensure_dirs():
     os.makedirs(FACES_DIR, exist_ok=True)
-    if not os.path.exists(FACES_DB):
-        with open(FACES_DB, "w") as f:
-            json.dump({}, f)
-
-def load_face_db():
-    ensure_dirs()
-    try:
-        with open(FACES_DB, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-def save_face_db(db):
-    ensure_dirs()
-    with open(FACES_DB, "w") as f:
-        json.dump(db, f, indent=2)
 
 def compute_face_histogram(face_img):
     hsv = cv2.cvtColor(face_img, cv2.COLOR_BGR2HSV)
@@ -76,18 +59,22 @@ def register_face(talk, name):
         talk("Internal error: Could not save face image. Please check folder permissions.")
         return
 
-    db = load_face_db()
-    db[name.lower()] = {
-        "name": name,
-        "histogram": histogram,
-        "image": face_path
-    }
-    save_face_db(db)
-    talk(f"Got it! I've saved {name}'s face. I'll recognize them next time.")
+    try:
+        save_face(name, histogram, face_path)
+        talk(f"Got it! I've saved {name}'s face to the cloud database. I'll recognize them next time.")
+    except Exception as e:
+        talk("I saved the image locally, but had trouble connecting to the cloud database.")
+        print(f"DB Error: {e}")
 
 def recognize_face(talk):
-    db = load_face_db()
-    if not db:
+    try:
+        faces_data = get_all_faces()
+    except Exception as e:
+        talk("I'm having trouble connecting to my memory database right now.")
+        print(f"DB Error: {e}")
+        return
+
+    if not faces_data:
         talk("I don't have any faces saved yet. Say 'remember this face as' followed by a name to register someone.")
         return
 
@@ -129,7 +116,7 @@ def recognize_face(talk):
     best_match = None
     best_score = 0
 
-    for key, data in db.items():
+    for data in faces_data:
         saved_hist = np.array(data["histogram"], dtype=np.float32)
         score = cv2.compareHist(current_hist_np, saved_hist, cv2.HISTCMP_CORREL)
         if score > best_score:

@@ -110,7 +110,7 @@ def _process_and_capture(command: str, lat=None, lon=None) -> str:
 
 @app.route("/listen", methods=["POST"])
 def listen():
-    acquired = _aura_lock.acquire(timeout=5.0)
+    acquired = _aura_lock.acquire(timeout=30.0)
     if not acquired:
         logger.warning("Lock busy — rejected /listen request.")
         return jsonify({"status": "error", "message": "AURA is busy. Please wait a moment."}), 429
@@ -118,7 +118,9 @@ def listen():
     try:
         from core.voice import accept_command
         command = accept_command()
+        
         if not command:
+            _aura_lock.release()
             return jsonify({
                 "status": "error",
                 "message": "I didn't catch that. Please try again."
@@ -129,14 +131,18 @@ def listen():
         lon = data.get("lon")
 
         combined = _process_and_capture(command, lat, lon)
-        logger.info("/listen '%s' -> '%s'", command, combined[:80])
+        
+        import datetime
+        now = datetime.datetime.now().strftime("%H:%M:%S")
+        logger.info("[%s] /listen '%s' -> '%s'", now, command, combined[:80])
+        
         return jsonify({
             "status": "success",
             "command": command,
             "response": "Command processed.",
             "lang_code": "en-US",
         })
-
+        
     except Exception as exc:
         import traceback
         logger.error("listen() error: %s\n%s", exc, traceback.format_exc())

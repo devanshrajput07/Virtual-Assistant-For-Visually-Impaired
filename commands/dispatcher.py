@@ -217,13 +217,13 @@ def process_command(command: str, gps_lat: float = None, gps_lon: float = None) 
             from commands.information import command_tell_news
             command_tell_news()
 
+        elif any(k in command for k in ["call", "dial", "whatsapp call", "video call", "audio call", "make a call"]):
+            from commands.communication import command_whatsapp_call
+            command_whatsapp_call(command)
+
         elif any(k in command for k in ["send message", "whatsapp", "send a message"]):
             from commands.communication import command_send_whatsapp_message
             command_send_whatsapp_message(command)
-
-        elif any(k in command for k in ["call", "dial"]):
-            from commands.communication import command_speed_dial
-            command_speed_dial(command)
 
         elif any(k in command for k in ["add contact", "save contact", "new contact"]):
             from commands.communication import save_contact

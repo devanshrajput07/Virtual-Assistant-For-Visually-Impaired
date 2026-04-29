@@ -5,7 +5,7 @@ from groq import Groq
 from config.settings import GROQ_KEY
 
 logger = logging.getLogger("aura.ai_chat")
-client = Groq(api_key=GROQ_KEY)
+client = Groq(api_key=GROQ_KEY, timeout=30.0)
 
 conversation_history: list[dict] = []
 MAX_HISTORY = 12
@@ -29,7 +29,8 @@ def _persist_history() -> None:
     except Exception as exc:
         logger.debug("Could not persist conversation: %s", exc)
 
-def chat_with_groq(prompt: str, retries: int = 3) -> str:
+def chat_with_groq(prompt: str, retries: int = 1) -> str:
+    start_time = time.time()
     global conversation_history
     conversation_history.append({"role": "user", "content": prompt})
 
@@ -38,7 +39,7 @@ def chat_with_groq(prompt: str, retries: int = 3) -> str:
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
 
-    last_error = None
+    last_error = ""
     for attempt in range(1, retries + 1):
         try:
             response = client.chat.completions.create(
@@ -50,15 +51,19 @@ def chat_with_groq(prompt: str, retries: int = 3) -> str:
             reply = response.choices[0].message.content.strip()
             conversation_history.append({"role": "assistant", "content": reply})
             _persist_history()
+            
+            elapsed = time.time() - start_time
+            logger.info("Groq response received in %.2fs", elapsed)
             return reply
         except Exception as exc:
-            last_error = exc
-            wait = 2 ** (attempt - 1)
-            logger.warning("Groq attempt %d/%d failed: %s — retrying in %ds", attempt, retries, exc, wait)
-            time.sleep(wait)
+            last_error = str(exc)
+            logger.warning("Groq attempt %d/%d failed: %s", attempt, retries, exc)
+            if attempt < retries:
+                time.sleep(1)
 
-    logger.error("All Groq retries exhausted. Last error: %s", last_error)
-    return "Sorry, I couldn't reach the AI service right now. Please try again in a moment."
+    elapsed = time.time() - start_time
+    logger.error("Groq failed after %.2fs. Last error: %s", elapsed, last_error)
+    return "I am having a bit of trouble connecting to my brain right now. Please give me a second and try again."
 
 def get_conversation_history() -> list[dict]:
     return list(conversation_history)

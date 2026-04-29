@@ -4,6 +4,12 @@ import datetime
 import logging
 import requests
 import re
+import pyautogui
+import time
+import win32gui
+import win32api
+import win32con
+import threading
 from core.voice import talk, accept_command_text
 
 logger = logging.getLogger("aura.commands.communication")
@@ -59,6 +65,105 @@ def command_send_whatsapp_message(command: str = "") -> None:
     except Exception as exc:
         logger.error("WhatsApp command failed: %s", exc)
         talk("Sorry, I couldn't send the message.")
+
+def command_whatsapp_call(command: str = "") -> None:
+    try:
+        contacts = _get_contacts()
+        cmd = command.lower()
+        
+        # Detect mode early
+        mode = "video" if "video" in cmd else "audio" if "audio" in cmd else None
+
+        # Robust name cleaning
+        contact_name = None
+        for name in contacts:
+            if name in cmd:
+                contact_name = name
+                break
+        
+        if not contact_name:
+            fillers = r'\b(?:make|start|an?|whatsapp|video|audio|call|to|on|for|please|hey|aura|ka)\b'
+            name_query = re.sub(fillers, ' ', cmd)
+            name_query = " ".join(name_query.split()).strip()
+            
+            for name in contacts:
+                if name in name_query or name_query in name:
+                    contact_name = name
+                    break
+
+        if not contact_name:
+            talk("Who would you like to call?")
+            contact_name = accept_command_text()
+            if not contact_name or contact_name.lower() not in contacts:
+                talk(f"Sorry, I couldn't find {contact_name} in your contacts.")
+                return
+            contact_name = contact_name.lower()
+
+        if not mode:
+            talk(f"Would you like an audio call or a video call with {contact_name}?")
+            call_type = accept_command_text()
+            if not call_type:
+                return
+            call_type = call_type.lower()
+            mode = "video" if "video" in call_type else "audio"
+
+        number = contacts[contact_name].replace("+", "")
+        # Using whatsapp:// protocol to try and open the desktop app directly
+        url = f"whatsapp://send?phone={number}"
+        
+        # 1. Open URL in background thread to avoid blocking
+        talk(f"Starting {mode} call with {contact_name} via WhatsApp.")
+        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+        
+        # 2. Handle focus and popup
+        pyautogui.press('enter') 
+        
+        time.sleep(8) 
+        
+        def find_whatsapp():
+            hwnds = []
+            win32gui.EnumWindows(lambda h, l: l.append(h) if "WhatsApp" in win32gui.GetWindowText(h) else None, hwnds)
+            return hwnds[0] if hwnds else None
+
+        hwnd = find_whatsapp()
+        if not hwnd:
+            talk("Could not find WhatsApp window.")
+            return
+
+        try:
+            win32gui.ShowWindow(hwnd, 5)
+            win32api.keybd_event(win32con.VK_MENU, 0, 0, 0)
+            win32gui.SetForegroundWindow(hwnd)
+            win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+        except Exception as e:
+            logger.warning("Focus failed: %s", e)
+
+        time.sleep(1)
+        rect = win32gui.GetWindowRect(hwnd)
+        win_left, win_top, win_right, win_bottom = rect
+        
+        call_btn_x = win_right - 180
+        call_btn_y = win_top + 60
+        
+        talk(f"Opening call menu for {contact_name}...")
+        pyautogui.moveTo(call_btn_x, call_btn_y, duration=0.5)
+        pyautogui.click()
+        time.sleep(2)
+        
+        if mode == "video":
+            talk("Starting video call...")
+            pyautogui.moveTo(win_right - 200, win_top + 180, duration=0.5)
+            pyautogui.click()
+        else:
+            talk("Starting voice call...")
+            pyautogui.moveTo(win_right - 400, win_top + 180, duration=0.5)
+            pyautogui.click()
+            
+        logger.info("WhatsApp %s call sequence completed for %s", mode, contact_name)
+
+    except Exception as exc:
+        logger.error("WhatsApp call command failed: %s", exc)
+        talk("Sorry, I couldn't initiate the call.")
 
 def command_speed_dial(command: str) -> None:
     contacts = _get_contacts()
@@ -160,8 +265,16 @@ def command_emergency_sos(gps_lat: float = None, gps_lon: float = None) -> None:
     encoded = urllib.parse.quote(message)
     number = emergency_number.replace("+", "")
 
+    import pyautogui
+    import time
+
     talk(f"Sending emergency SOS to {name_display}. Stay calm.")
     webbrowser.open(f"https://wa.me/{number}?text={encoded}")
+    
+    # Wait for the browser and WhatsApp to load before pressing Enter
+    time.sleep(8)
+    pyautogui.press('enter')
+    
     talk(f"Emergency message sent to {name_display} via WhatsApp. Help is on the way. Stay safe.")
     logger.warning("SOS sent to %s (%s) from location: %s", name_display, number, location_str)
 

@@ -2,7 +2,7 @@
 
 const CONFIG = {
   pollInterval: 1000,
-  listenTimeout: 60000,
+  listenTimeout: 90000,
   wakeWords: ['hey aura', 'hi aura', 'aura', 'ok aura', 'okay aura', 'wake up aura'],
   ttsRate: 1.05,
   ttsPitch: 1.0,

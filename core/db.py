@@ -136,19 +136,24 @@ def get_recent_conversations(limit: int = 10) -> List[Dict]:
         .limit(limit)
     )
 
-def save_face(name: str, encoding_bytes: bytes) -> None:
+def save_face(name: str, histogram: List[float], image_path: str) -> None:
     db = get_db()
-    from bson.binary import Binary
     db.faces.update_one(
-        {"name": name.lower()},
-        {"$set": {"name": name.lower(), "encoding": Binary(encoding_bytes), "updated_at": datetime.now(timezone.utc)}},
+        {"name": name},
+        {
+            "$set": {
+                "name": name,
+                "histogram": histogram,
+                "image": image_path,
+                "updated_at": datetime.now(timezone.utc)
+            }
+        },
         upsert=True,
     )
 
 def get_all_faces() -> List[Dict]:
     db = get_db()
-    docs = list(db.faces.find({}, {"_id": 0}))
-    return [{"name": d["name"], "encoding": bytes(d["encoding"])} for d in docs]
+    return list(db.faces.find({}, {"_id": 0}))
 
 def cache_set(key: str, value: Any, ttl_seconds: int = 3600) -> None:
     from datetime import timedelta

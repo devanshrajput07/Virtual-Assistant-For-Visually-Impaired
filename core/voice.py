@@ -63,42 +63,66 @@ def talk(text: str) -> None:
         _talk_handler(text)
         return
 
-    with _tts_lock:
+    # RUN TTS IN BACKGROUND to avoid hardware-busy hangs
+    threading.Thread(target=_talk_threaded, args=(text,), daemon=True).start()
+
+def _talk_threaded(text: str) -> None:
+    # Use a lock to ensure only one thread talks at a time
+    if not _tts_lock.acquire(blocking=False):
+        logger.debug("TTS engine busy, skipping audio output.")
+        return
+    
+    try:
         global _tts_engine
-        try:
-            engine = _get_tts_engine()
-            engine.say(text)
-            engine.runAndWait()
-        except Exception as exc:
-            logger.warning("TTS error, reinitialising engine: %s", exc)
-            _tts_engine = None
-            try:
-                engine = _get_tts_engine()
-                engine.say(text)
-                engine.runAndWait()
-            except Exception as exc2:
-                logger.error("TTS failed after reinit: %s", exc2)
+        engine = _get_tts_engine()
+        engine.say(text)
+        engine.runAndWait()
+    except Exception as exc:
+        logger.warning("TTS hardware error: %s", exc)
+        _tts_engine = None # Force re-init next time
+    finally:
+        _tts_lock.release()
+
+# Pre-initialize engine at module load
+threading.Thread(target=_get_tts_engine, daemon=True).start()
+
+import concurrent.futures
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 def accept_command() -> str | None:
+    # MASTER WATCHDOG: Ensure the entire process never exceeds 30 seconds
+    try:
+        future = _executor.submit(_accept_command_logic)
+        return future.result(timeout=30)
+    except concurrent.futures.TimeoutError:
+        logger.warning("Master Voice Watchdog triggered — total process exceeded 30s.")
+        talk("I'm sorry, that's taking too long. Please try again.")
+        return None
+    except Exception as exc:
+        logger.error("Master Watchdog error: %s", exc)
+        return None
+
+def _accept_command_logic() -> str | None:
     try:
         with sr.Microphone() as source:
-            logger.debug("Adjusting for ambient noise…")
             listener.adjust_for_ambient_noise(source, duration=0.3)
             logger.info("🎙️ Listening…")
-            voice = listener.listen(source, timeout=8, phrase_time_limit=12)
+            start_listen = time.time()
+            voice = listener.listen(source, timeout=8, phrase_time_limit=7)
+            logger.debug("Listening complete in %.2fs", time.time() - start_listen)
+            
+        if not voice or len(voice.get_wav_data()) < 500:
+            logger.warning("Microphone produced zero data.")
+            return None
+
+        start_recog = time.time()
         command = listener.recognize_google(voice)
+        logger.info("Recognized in %.2fs: %s", time.time() - start_recog, command)
+        
         if command:
-            command = command.lower().strip()
-            logger.info("🧏 Heard: %s", command)
-            return command
-    except sr.WaitTimeoutError:
-        logger.debug("Mic timeout — no speech detected.")
-    except sr.UnknownValueError:
-        logger.debug("Could not understand audio.")
-    except sr.RequestError as exc:
-        logger.warning("Google SR unavailable: %s", exc)
+            return command.lower().strip()
     except Exception as exc:
-        logger.error("Unexpected error in accept_command: %s", exc)
+        logger.debug("Logic error: %s", exc)
     return None
 
 def accept_command_text() -> str | None:
