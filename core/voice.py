@@ -63,11 +63,9 @@ def talk(text: str) -> None:
         _talk_handler(text)
         return
 
-    # RUN TTS IN BACKGROUND to avoid hardware-busy hangs
     threading.Thread(target=_talk_threaded, args=(text,), daemon=True).start()
 
 def _talk_threaded(text: str) -> None:
-    # Use a lock to ensure only one thread talks at a time
     if not _tts_lock.acquire(blocking=False):
         logger.debug("TTS engine busy, skipping audio output.")
         return
@@ -79,18 +77,16 @@ def _talk_threaded(text: str) -> None:
         engine.runAndWait()
     except Exception as exc:
         logger.warning("TTS hardware error: %s", exc)
-        _tts_engine = None # Force re-init next time
+        _tts_engine = None
     finally:
         _tts_lock.release()
 
-# Pre-initialize engine at module load
 threading.Thread(target=_get_tts_engine, daemon=True).start()
 
 import concurrent.futures
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 def accept_command() -> str | None:
-    # MASTER WATCHDOG: Ensure the entire process never exceeds 30 seconds
     try:
         future = _executor.submit(_accept_command_logic)
         return future.result(timeout=30)
@@ -126,7 +122,8 @@ def _accept_command_logic() -> str | None:
     return None
 
 def accept_command_text() -> str | None:
-    return None
+    """Listens for voice input and returns the recognized text string."""
+    return accept_command()
 
 def greeting_message() -> None:
     hour = datetime.datetime.now().hour

@@ -71,33 +71,44 @@ def command_whatsapp_call(command: str = "") -> None:
         contacts = _get_contacts()
         cmd = command.lower()
         
-        # Detect mode early
         mode = "video" if "video" in cmd else "audio" if "audio" in cmd else None
 
-        # Robust name cleaning
         contact_name = None
-        for name in contacts:
-            if name in cmd:
+        sorted_contacts = sorted(contacts.keys(), key=len, reverse=True)
+        
+        for name in sorted_contacts:
+            if re.search(rf'\b{re.escape(name)}\b', cmd):
                 contact_name = name
                 break
         
         if not contact_name:
-            fillers = r'\b(?:make|start|an?|whatsapp|video|audio|call|to|on|for|please|hey|aura|ka)\b'
+            fillers = r'\b(?:make|start|an?|whatsapp|video|audio|call|to|on|for|please|hey|aura|ka|with)\b'
             name_query = re.sub(fillers, ' ', cmd)
             name_query = " ".join(name_query.split()).strip()
             
-            for name in contacts:
-                if name in name_query or name_query in name:
-                    contact_name = name
-                    break
+            if name_query:
+                for name in sorted_contacts:
+                    if name == name_query or name in name_query or name_query in name:
+                        contact_name = name
+                        break
 
         if not contact_name:
             talk("Who would you like to call?")
             contact_name = accept_command_text()
-            if not contact_name or contact_name.lower() not in contacts:
+            if not contact_name:
+                return
+            contact_name = contact_name.lower().strip()
+            
+            found = False
+            for name in sorted_contacts:
+                if name == contact_name or name in contact_name:
+                    contact_name = name
+                    found = True
+                    break
+            
+            if not found:
                 talk(f"Sorry, I couldn't find {contact_name} in your contacts.")
                 return
-            contact_name = contact_name.lower()
 
         if not mode:
             talk(f"Would you like an audio call or a video call with {contact_name}?")
@@ -107,18 +118,17 @@ def command_whatsapp_call(command: str = "") -> None:
             call_type = call_type.lower()
             mode = "video" if "video" in call_type else "audio"
 
-        number = contacts[contact_name].replace("+", "")
-        # Using whatsapp:// protocol to try and open the desktop app directly
+        number = "".join(filter(str.isdigit, contacts[contact_name]))
+        
         url = f"whatsapp://send?phone={number}"
         
-        # 1. Open URL in background thread to avoid blocking
         talk(f"Starting {mode} call with {contact_name} via WhatsApp.")
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
         
-        # 2. Handle focus and popup
+        time.sleep(1.5)
         pyautogui.press('enter') 
         
-        time.sleep(8) 
+        time.sleep(10)
         
         def find_whatsapp():
             hwnds = []
@@ -271,7 +281,6 @@ def command_emergency_sos(gps_lat: float = None, gps_lon: float = None) -> None:
     talk(f"Sending emergency SOS to {name_display}. Stay calm.")
     webbrowser.open(f"https://wa.me/{number}?text={encoded}")
     
-    # Wait for the browser and WhatsApp to load before pressing Enter
     time.sleep(8)
     pyautogui.press('enter')
     
